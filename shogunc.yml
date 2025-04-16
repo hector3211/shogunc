@@ -1,0 +1,19 @@
+sql:
+  schema: /schema.sql
+  queries: /queries
+  driver: postgresql
+#   gen:
+#     go:
+#       package: "authors"
+#       out: "postgresql"
+#   database:
+#     managed: true
+#   rules:
+#     - sqlc/db-prepare
+# - schema: "mysql/schema.sql"
+#   queries: "mysql/query.sql"
+#   engine: "mysql"
+#   gen:
+#     go:
+#       package: "authors"
+#       out: "mysql"

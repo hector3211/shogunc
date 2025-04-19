@@ -128,7 +128,7 @@ func TestStringifySelectStatement(t *testing.T) {
 		t.Run(fmt.Sprintf("SelectStatement(%v)", tt.stmt), func(t *testing.T) {
 			got := stringifySelectStatement(tt.stmt)
 			if got != tt.want {
-				t.Errorf("stringifySelectStatement() = %v, want %v", got, tt.want)
+				t.Errorf("got = %v, want %v", got, tt.want)
 			}
 		})
 	}

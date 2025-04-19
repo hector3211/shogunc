@@ -32,6 +32,11 @@ func (l *Lexer) NextToken() Token {
 		tok = CreateToken(LPAREN, l.ch)
 	case ')':
 		tok = CreateToken(RPAREN, l.ch)
+	// TODO: Parse arrays
+	case '[':
+		tok = CreateToken(LBRACKET, l.ch)
+	case ']':
+		tok = CreateToken(RBRACKET, l.ch)
 	case '*':
 		tok = CreateToken(ASTERIK, l.ch)
 	case '$':

@@ -7,7 +7,26 @@ import (
 	"strings"
 )
 
-type Node any
+const (
+	ERROR_OBJ = "ERROR"
+)
+
+type Error struct {
+	Messsage []byte
+	Line     int
+}
+
+func NewError(message string, line int) *Error {
+	return &Error{
+		Messsage: []byte(message),
+		Line:     line,
+	}
+}
+
+func (e *Error) Inspect() string {
+	err := fmt.Sprintf("ERROR: %s LINE: %d", e.Messsage, e.Line)
+	return err
+}
 
 type Condition struct {
 	Ident     []byte // Column | Order | Group
@@ -33,103 +52,105 @@ type InsertStatement struct {
 	InsertMode      []byte
 }
 
-type Ast struct {
+type Node any
+
+type Parser struct {
 	l            *Lexer
 	Statements   []Node
 	currentToken Token
 	peekToken    Token
 }
 
-func NewAst(l *Lexer) *Ast {
-	return &Ast{
+func NewParser(l *Lexer) *Parser {
+	return &Parser{
 		l:          l,
 		Statements: []Node{},
 	}
 }
 
-func (a *Ast) NextToken() {
-	a.currentToken = a.peekToken
-	a.peekToken = a.l.NextToken()
+func (p *Parser) NextToken() {
+	p.currentToken = p.peekToken
+	p.peekToken = p.l.NextToken()
 }
 
-func (a *Ast) Parse() (Node, error) {
-	a.NextToken()
-	a.NextToken()
+func (p *Parser) Parse() (Node, error) {
+	p.NextToken()
+	p.NextToken()
 
-	switch a.currentToken.Type {
+	switch p.currentToken.Type {
 	case SELECT:
-		return a.parseSelect()
+		return p.parseSelect()
 	case INSERT:
-		return a.parserInsert()
+		return p.parserInsert()
 	default:
-		return nil, fmt.Errorf("unexpected token: %s", a.currentToken.Literal)
+		return nil, fmt.Errorf("unexpected token: %s", p.currentToken.Literal)
 	}
 }
 
-func (a *Ast) parseSelect() (*SelectStatement, error) {
+func (p *Parser) parseSelect() (*SelectStatement, error) {
 	stmt := &SelectStatement{}
-	a.NextToken()
+	p.NextToken()
 
 	// Parse SELECT
-	for a.currentToken.Type != FROM && a.currentToken.Type != EOF {
-		switch a.currentToken.Type {
+	for p.currentToken.Type != FROM && p.currentToken.Type != EOF {
+		switch p.currentToken.Type {
 		case ASTERIK, IDENT:
-			stmt.Fields = append(stmt.Fields, a.currentToken.Literal)
+			stmt.Fields = append(stmt.Fields, p.currentToken.Literal)
 		}
-		a.NextToken()
+		p.NextToken()
 	}
 
 	// Parse FROM
-	if a.currentToken.Type != FROM {
-		return nil, fmt.Errorf("expected FROM got %s", a.currentToken.Literal)
+	if p.currentToken.Type != FROM {
+		return nil, fmt.Errorf("expected FROM got %s", p.currentToken.Literal)
 	}
-	a.NextToken()
+	p.NextToken()
 
-	if a.currentToken.Type != IDENT {
-		return nil, fmt.Errorf("expected table name got %s", a.currentToken.Literal)
+	if p.currentToken.Type != IDENT {
+		return nil, fmt.Errorf("expected table name got %s", p.currentToken.Literal)
 	}
-	stmt.TableName = []byte(a.currentToken.Literal)
-	a.NextToken()
+	stmt.TableName = []byte(p.currentToken.Literal)
+	p.NextToken()
 
 	// Parse WHERE
-	if a.currentToken.Type != WHERE {
-		return nil, fmt.Errorf("expected WHERE got %s", a.currentToken.Literal)
+	if p.currentToken.Type != WHERE {
+		return nil, fmt.Errorf("expected WHERE got %s", p.currentToken.Literal)
 	}
-	a.NextToken()
+	p.NextToken()
 
 	var conditions []Condition
-	for a.currentToken.Type != SEMICOLON && a.currentToken.Type != EOF {
-		if a.currentToken.Type == LIMIT || a.currentToken.Type == OFFSET {
+	for p.currentToken.Type != SEMICOLON && p.currentToken.Type != EOF {
+		if p.currentToken.Type == LIMIT || p.currentToken.Type == OFFSET {
 			break
 		}
 		cond := Condition{}
-		if len(cond.Logical) == 0 && IsLogicalOperator(a.currentToken.Literal) {
-			cond.Logical = []byte(a.currentToken.Literal)
-			a.NextToken()
+		if len(cond.Logical) == 0 && IsLogicalOperator(p.currentToken.Literal) {
+			cond.Logical = []byte(p.currentToken.Literal)
+			p.NextToken()
 		}
 
-		if a.currentToken.Type == IDENT {
-			cond.Ident = []byte(a.currentToken.Literal)
-			a.NextToken()
+		if p.currentToken.Type == IDENT {
+			cond.Ident = []byte(p.currentToken.Literal)
+			p.NextToken()
 		}
 
-		if len(cond.Condition) == 0 && IsConditional(a.currentToken.Literal) {
-			cond.Condition = []byte(a.currentToken.Literal)
-			a.NextToken()
+		if len(cond.Condition) == 0 && IsConditional(p.currentToken.Literal) {
+			cond.Condition = []byte(p.currentToken.Literal)
+			p.NextToken()
 		}
 
-		switch a.currentToken.Type {
+		switch p.currentToken.Type {
 		case BINDPARAM:
-			a.NextToken()
-			val, err := strconv.Atoi(a.currentToken.Literal)
+			p.NextToken()
+			val, err := strconv.Atoi(p.currentToken.Literal)
 			if err != nil {
 				return nil, fmt.Errorf("invalid bind param: %v", err)
 			}
 			cond.Value = val
 		case STRING:
-			cond.Value = a.currentToken.Literal
+			cond.Value = p.currentToken.Literal
 		case INT:
-			val, err := strconv.Atoi(a.currentToken.Literal)
+			val, err := strconv.Atoi(p.currentToken.Literal)
 			if err != nil {
 				return nil, fmt.Errorf("invalid bind param: %v", err)
 			}
@@ -139,83 +160,83 @@ func (a *Ast) parseSelect() (*SelectStatement, error) {
 		if cond.Ident != nil && cond.Condition != nil && cond.Value != nil {
 			conditions = append(conditions, cond)
 		}
-		a.NextToken()
+		p.NextToken()
 	}
 
 	// fmt.Println("before LIMIT:", a.currentToken.Type, a.currentToken.Literal)
-	if a.currentToken.Type == LIMIT {
-		a.NextToken()
-		if a.currentToken.Type == INT {
-			val, err := strconv.Atoi(a.currentToken.Literal)
+	if p.currentToken.Type == LIMIT {
+		p.NextToken()
+		if p.currentToken.Type == INT {
+			val, err := strconv.Atoi(p.currentToken.Literal)
 			if err != nil {
 				return nil, fmt.Errorf("invalid bind param: %v", err)
 			}
 			stmt.Limit = val
-			a.NextToken()
+			p.NextToken()
 		}
 	}
 
-	if a.currentToken.Type == OFFSET {
-		a.NextToken()
-		if a.currentToken.Type == INT {
-			val, err := strconv.Atoi(a.currentToken.Literal)
+	if p.currentToken.Type == OFFSET {
+		p.NextToken()
+		if p.currentToken.Type == INT {
+			val, err := strconv.Atoi(p.currentToken.Literal)
 			if err != nil {
 				return nil, fmt.Errorf("invalid bind param: %v", err)
 			}
 			stmt.Offset = val
-			a.NextToken()
+			p.NextToken()
 		}
 	}
 	stmt.Conditions = conditions
 
-	a.Statements = append(a.Statements, stmt)
+	p.Statements = append(p.Statements, stmt)
 	return stmt, nil
 }
 
-func (a *Ast) parserInsert() (*InsertStatement, error) {
+func (p *Parser) parserInsert() (*InsertStatement, error) {
 	stmt := &InsertStatement{}
-	a.NextToken()
+	p.NextToken()
 
 	// Parse Insert
-	for a.currentToken.Type != VALUES && a.currentToken.Type != EOF {
-		if a.currentToken.Type == IDENT {
-			stmt.TableName = []byte(a.currentToken.Literal)
+	for p.currentToken.Type != VALUES && p.currentToken.Type != EOF {
+		if p.currentToken.Type == IDENT {
+			stmt.TableName = []byte(p.currentToken.Literal)
 		}
-		if a.currentToken.Type == LPAREN {
-			for a.currentToken.Type != RPAREN {
-				if a.currentToken.Type != COMMA {
-					stmt.Columns = append(stmt.Columns, []byte(a.currentToken.Literal))
+		if p.currentToken.Type == LPAREN {
+			for p.currentToken.Type != RPAREN {
+				if p.currentToken.Type != COMMA {
+					stmt.Columns = append(stmt.Columns, []byte(p.currentToken.Literal))
 				}
-				a.NextToken()
+				p.NextToken()
 			}
 		}
-		a.NextToken()
+		p.NextToken()
 	}
 
 	// Parse Values
-	for a.currentToken.Type != SEMICOLON && a.currentToken.Type != EOF && a.currentToken.Type == RETURNING {
-		if a.currentToken.Type == LPAREN {
-			curr := a.currentToken
+	for p.currentToken.Type != SEMICOLON && p.currentToken.Type != EOF && p.currentToken.Type == RETURNING {
+		if p.currentToken.Type == LPAREN {
+			curr := p.currentToken
 			for curr.Type != RPAREN {
 				if curr.Type == BINDPARAM {
-					a.NextToken()
-					val, err := strconv.Atoi(a.currentToken.Literal)
+					p.NextToken()
+					val, err := strconv.Atoi(p.currentToken.Literal)
 					if err != nil {
 						return nil, fmt.Errorf("invalid bind param: %v", err)
 					}
 					stmt.Values = append(stmt.Values, val)
 				}
-				a.NextToken()
+				p.NextToken()
 			}
 		}
-		a.NextToken()
+		p.NextToken()
 	}
 
-	if a.currentToken.Type == RETURNING {
-		a.NextToken()
-		for a.currentToken.Type != SEMICOLON && a.currentToken.Type != EOF {
-			if a.currentToken.Type == IDENT {
-				stmt.ReturningFields = append(stmt.ReturningFields, []byte(a.currentToken.Literal))
+	if p.currentToken.Type == RETURNING {
+		p.NextToken()
+		for p.currentToken.Type != SEMICOLON && p.currentToken.Type != EOF {
+			if p.currentToken.Type == IDENT {
+				stmt.ReturningFields = append(stmt.ReturningFields, []byte(p.currentToken.Literal))
 			}
 		}
 	}
@@ -223,13 +244,13 @@ func (a *Ast) parserInsert() (*InsertStatement, error) {
 	return stmt, nil
 }
 
-func (a *Ast) String() string {
+func (p *Parser) String() string {
 	var out bytes.Buffer
-	if len(a.Statements) == 0 {
+	if len(p.Statements) == 0 {
 		return ""
 	}
 
-	switch stmt := a.Statements[0].(type) {
+	switch stmt := p.Statements[0].(type) {
 	case *SelectStatement:
 		out.WriteString(stringifySelectStatement(stmt))
 	case *InsertStatement:

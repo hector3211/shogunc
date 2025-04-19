@@ -16,16 +16,24 @@ const (
 	POSTGRES Driver = "postgres"
 )
 
+type QueryType string
+
+const (
+	EXEC QueryType = "exec"
+	MANY QueryType = "many"
+	ONE  QueryType = "one"
+)
+
 type Query struct {
 	Name []byte
-	Type []byte
+	Type QueryType // exec | many | one
 	SQL  []byte
 }
 
 type GeneratorBuilder struct {
 	QueryPath  []byte
-	Queries    []Query
 	SchemaPath []byte
+	Queries    []Query
 	Driver     Driver
 }
 
@@ -197,7 +205,7 @@ func (g *GeneratorBuilder) ParseSqlFile(file *os.File) error {
 			// Initialize Tag with name & type
 			current = &Query{
 				Name: []byte(matches[1]),
-				Type: []byte(matches[2]),
+				Type: QueryType(matches[2]),
 			}
 			// Jump to next line (SQL statement)
 			continue

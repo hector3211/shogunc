@@ -42,7 +42,8 @@ type Ast struct {
 
 func NewAst(l *Lexer) *Ast {
 	return &Ast{
-		l: l,
+		l:          l,
+		Statements: []Node{},
 	}
 }
 

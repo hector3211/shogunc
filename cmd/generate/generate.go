@@ -169,7 +169,7 @@ func (g *GeneratorBuilder) LoadSqlFiles() error {
 		}
 	}
 
-	g.listSqlQueries()
+	// g.listSqlQueries()
 
 	return nil
 }

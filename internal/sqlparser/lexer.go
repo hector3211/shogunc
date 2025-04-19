@@ -84,7 +84,7 @@ func (l *Lexer) readNumber() string {
 
 func (l *Lexer) readIdentifer() string {
 	position := l.position
-	for isLetter(l.ch) {
+	for isLetter(l.ch) || l.ch == '_' {
 		l.ReadChar()
 	}
 

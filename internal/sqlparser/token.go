@@ -1,6 +1,8 @@
 package sqlparser
 
-import "strings"
+import (
+	"strings"
+)
 
 type TokenType string
 
@@ -156,23 +158,26 @@ func LookupIdent(ident string) TokenType {
 
 func IsConditional(conditional string) bool {
 	ops := map[string]struct{}{
-		"=":       {},
-		"!=":      {},
-		"<>":      {},
-		">":       {},
-		">=":      {},
-		"<":       {},
-		"<=":      {},
-		"AND":     {},
-		"OR":      {},
-		"NOT":     {},
-		"IN":      {},
-		"LIKE":    {},
-		"BETWEEN": {},
-		"IS":      {},
+		"=":  {},
+		"!=": {},
+		"<>": {},
+		">":  {},
+		">=": {},
+		"<":  {},
+		"<=": {},
 	}
 
-	strFormat := strings.ToUpper(strings.TrimSpace(conditional))
+	strFormat := strings.TrimSpace(conditional)
 	_, ok := ops[strFormat]
 	return ok
+}
+
+func IsLogicalOperator(op string) bool {
+	switch strings.ToUpper(strings.TrimSpace(op)) {
+	case "AND", "OR", "NOT", "IN", "LIKE", "BETWEEN", "IS":
+		return true
+
+	default:
+		return false
+	}
 }

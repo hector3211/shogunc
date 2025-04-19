@@ -7,7 +7,8 @@ import (
 	"testing"
 )
 
-func TestAstOne(t *testing.T) {
+func setUpGenerator(t *testing.T) *generate.GeneratorBuilder {
+	t.Helper()
 	configContents, err := os.ReadFile("../../shogunc.yml")
 	if err != nil {
 		t.Fatal(err)
@@ -21,6 +22,12 @@ func TestAstOne(t *testing.T) {
 	if err := gen.LoadSqlFiles(); err != nil {
 		t.Fatalf("Error loading sql files: %v", err)
 	}
+
+	return gen
+}
+
+func TestAstLoadTokens(t *testing.T) {
+	gen := setUpGenerator(t)
 
 	for _, file := range gen.Queries {
 		lexer := NewLexer(string(file.SQL))
@@ -36,47 +43,150 @@ func TestAstOne(t *testing.T) {
 	}
 }
 
-func TestAstTwo(t *testing.T) {
-	configContents, err := os.ReadFile("../../shogunc.yml")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	gen := generate.NewGenerator()
-	if err := gen.ParseConfig(configContents); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := gen.LoadSqlFiles(); err != nil {
-		t.Fatalf("Error loading sql files: %v", err)
-	}
+func TestAstParse(t *testing.T) {
+	gen := setUpGenerator(t)
 
 	for _, file := range gen.Queries {
-		lexer := NewLexer(string(file.SQL))
-		parser := NewAst(lexer)
+		t.Run(fmt.Sprintf("Parsing: %s", file.Name), func(t *testing.T) {
+			lexer := NewLexer(string(file.SQL))
+			parser := NewAst(lexer)
 
-		node, err := parser.Parse()
-		if err != nil || node == nil {
-			t.Errorf("Failed to parse in %s: %v", file.Name, err)
-			continue
-		}
-		// t.Logf("Parsed node: %#v", node)
+			node, err := parser.Parse()
+			if err != nil {
+				t.Errorf("parse error: %v", err)
+				return
+			}
+			if node == nil {
+				t.Errorf("parsed node is nil")
+				return
+			}
 
-		switch stmt := node.(type) {
-		case *SelectStatement:
-			t.Logf("Parsed SELECT: table=%s, fields=%v\n", stmt.TableName, stmt.Fields)
-			for _, c := range stmt.Conditions {
-				fmt.Printf("Ident:%s Condition:%s Bind:%v\n", c.Ident, c.Condition, c.Value)
+			switch stmt := node.(type) {
+			case *SelectStatement:
+				t.Logf("SELECT - table: %s, fields: %v", stmt.TableName, stmt.Fields)
+				for _, c := range stmt.Conditions {
+					t.Logf("Condition - Ident: %s, Operator: %s, Value: %v\n", c.Ident, c.Condition, c.Value)
+				}
+				t.Logf("LIMIT: %d, OFFSET: %d", stmt.Limit, stmt.Offset)
+
+			case *InsertStatement:
+				t.Logf("INSERT - table: %s, values: %d", stmt.TableName, stmt.Values)
+				for _, col := range stmt.Columns {
+					t.Logf("Column: %s", string(col))
+				}
+
+			default:
+				t.Errorf("unknown AST node type: %T", node)
 			}
-			t.Logf("LIMIT: %d", stmt.Limit)
-			t.Logf("OFFSET: %d", stmt.Offset)
-		case *InsertStatement:
-			t.Logf("Parsed INSERT: table=%s, values=%d", stmt.TableName, stmt.Values)
-			for _, c := range stmt.Columns {
-				t.Logf("%s,", string(c))
+		})
+	}
+}
+
+func TestStringifySelectStatement(t *testing.T) {
+	tests := []struct {
+		stmt *SelectStatement
+		want string
+	}{
+		{
+			stmt: &SelectStatement{
+				Fields:    []string{"id", "name"},
+				TableName: []byte("users"),
+				Conditions: []Condition{
+					{Ident: []byte("age"), Condition: []byte(">"), Value: 30},
+				},
+				Limit:  10,
+				Offset: 5,
+			},
+			want: "SELECT id, name FROM users WHERE age > 30 LIMIT 10 OFFSET 5;",
+		},
+		{
+			stmt: &SelectStatement{
+				Fields:     []string{"*"},
+				TableName:  []byte("orders"),
+				Conditions: nil,
+				Limit:      0,
+				Offset:     0,
+			},
+			want: "SELECT * FROM orders;",
+		},
+		{
+			stmt: &SelectStatement{
+				Fields:    []string{"id", "name"},
+				TableName: []byte("products"),
+				Conditions: []Condition{
+					{Ident: []byte("price"), Condition: []byte(">="), Value: 100},
+				},
+				Distinct: true,
+				Limit:    0,
+				Offset:   0,
+			},
+			want: "SELECT DISTINCT id, name FROM products WHERE price >= 100;",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("SelectStatement(%v)", tt.stmt), func(t *testing.T) {
+			got := stringifySelectStatement(tt.stmt)
+			if got != tt.want {
+				t.Errorf("stringifySelectStatement() = %v, want %v", got, tt.want)
 			}
-		default:
-			t.Errorf("Unknown AST node type for query: %s", file.Name)
-		}
+		})
+	}
+}
+
+func TestStringifyInsertStatement(t *testing.T) {
+	tests := []struct {
+		stmt *InsertStatement
+		want string
+	}{
+		{
+			stmt: &InsertStatement{
+				TableName:       []byte("users"),
+				Columns:         [][]byte{[]byte("name"), []byte("age")},
+				Values:          []int{30, 25},
+				ReturningFields: [][]byte{[]byte("id")},
+				InsertMode:      []byte("OR REPLACE"),
+			},
+			want: "INSERT OR REPLACE INTO users (name, age) VALUES (30, 25) RETURNING id;",
+		},
+		{
+			stmt: &InsertStatement{
+				TableName:       []byte("products"),
+				Columns:         [][]byte{[]byte("id"), []byte("name"), []byte("price")},
+				Values:          []int{1, 100, 25},
+				ReturningFields: nil,
+				InsertMode:      nil,
+			},
+			want: "INSERT INTO products (id, name, price) VALUES (1, 100, 25);",
+		},
+		{
+			stmt: &InsertStatement{
+				TableName:       []byte("orders"),
+				Columns:         [][]byte{[]byte("id"), []byte("quantity")},
+				Values:          []int{10, 2},
+				ReturningFields: [][]byte{[]byte("order_id")},
+				InsertMode:      nil,
+			},
+			want: "INSERT INTO orders (id, quantity) VALUES (10, 2) RETURNING order_id;",
+		},
+		{
+			stmt: &InsertStatement{
+				TableName:       []byte("customers"),
+				Columns:         nil,
+				Values:          nil,
+				ReturningFields: nil,
+				InsertMode:      nil,
+			},
+			want: "INSERT INTO customers VALUES ();",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("InsertStatement(%v)", tt.stmt), func(t *testing.T) {
+			got := stringifyInsertStatement(tt.stmt)
+			if got != tt.want {
+				t.Errorf("got = %v want %v", got, tt.want)
+			}
+		})
 	}
 }

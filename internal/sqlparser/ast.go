@@ -4,13 +4,15 @@ import (
 	"bytes"
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 type Node any
 
 type Condition struct {
 	Ident     []byte // Column | Order | Group
-	Condition []byte // AND | OR | =
+	Logical   []byte // AND | OR | NOT
+	Condition []byte // = | != | >
 	Value     any    // $1, $2
 }
 
@@ -24,7 +26,7 @@ type SelectStatement struct {
 }
 
 type InsertStatement struct {
-	TableName       string
+	TableName       []byte
 	Columns         [][]byte
 	Values          []int
 	ReturningFields [][]byte
@@ -33,7 +35,7 @@ type InsertStatement struct {
 
 type Ast struct {
 	l            *Lexer
-	Statements   []Token
+	Statements   []Node
 	currentToken Token
 	peekToken    Token
 }
@@ -69,11 +71,8 @@ func (a *Ast) parseSelect() (*SelectStatement, error) {
 
 	// Parse SELECT
 	for a.currentToken.Type != FROM && a.currentToken.Type != EOF {
-		if a.currentToken.Type == ASTERIK {
-			stmt.Fields = append(stmt.Fields, a.currentToken.Literal)
-			break
-		}
-		if a.currentToken.Type == IDENT {
+		switch a.currentToken.Type {
+		case ASTERIK, IDENT:
 			stmt.Fields = append(stmt.Fields, a.currentToken.Literal)
 		}
 		a.NextToken()
@@ -95,7 +94,6 @@ func (a *Ast) parseSelect() (*SelectStatement, error) {
 	if a.currentToken.Type != WHERE {
 		return nil, fmt.Errorf("expected WHERE got %s", a.currentToken.Literal)
 	}
-
 	a.NextToken()
 
 	var conditions []Condition
@@ -104,12 +102,17 @@ func (a *Ast) parseSelect() (*SelectStatement, error) {
 			break
 		}
 		cond := Condition{}
+		if len(cond.Logical) == 0 && IsLogicalOperator(a.currentToken.Literal) {
+			cond.Logical = []byte(a.currentToken.Literal)
+			a.NextToken()
+		}
+
 		if a.currentToken.Type == IDENT {
 			cond.Ident = []byte(a.currentToken.Literal)
 			a.NextToken()
 		}
 
-		if IsConditional(a.currentToken.Literal) {
+		if len(cond.Condition) == 0 && IsConditional(a.currentToken.Literal) {
 			cond.Condition = []byte(a.currentToken.Literal)
 			a.NextToken()
 		}
@@ -124,9 +127,15 @@ func (a *Ast) parseSelect() (*SelectStatement, error) {
 			cond.Value = val
 		case STRING:
 			cond.Value = a.currentToken.Literal
+		case INT:
+			val, err := strconv.Atoi(a.currentToken.Literal)
+			if err != nil {
+				return nil, fmt.Errorf("invalid bind param: %v", err)
+			}
+			cond.Value = val
 		}
 
-		if cond.Ident != nil && cond.Condition != nil {
+		if cond.Ident != nil && cond.Condition != nil && cond.Value != nil {
 			conditions = append(conditions, cond)
 		}
 		a.NextToken()
@@ -158,6 +167,7 @@ func (a *Ast) parseSelect() (*SelectStatement, error) {
 	}
 	stmt.Conditions = conditions
 
+	a.Statements = append(a.Statements, stmt)
 	return stmt, nil
 }
 
@@ -168,7 +178,7 @@ func (a *Ast) parserInsert() (*InsertStatement, error) {
 	// Parse Insert
 	for a.currentToken.Type != VALUES && a.currentToken.Type != EOF {
 		if a.currentToken.Type == IDENT {
-			stmt.TableName = a.currentToken.Literal
+			stmt.TableName = []byte(a.currentToken.Literal)
 		}
 		if a.currentToken.Type == LPAREN {
 			for a.currentToken.Type != RPAREN {
@@ -214,57 +224,127 @@ func (a *Ast) parserInsert() (*InsertStatement, error) {
 
 func (a *Ast) String() string {
 	var out bytes.Buffer
-	firstToken := a.Statements[0]
+	if len(a.Statements) == 0 {
+		return ""
+	}
 
-	switch firstToken.Type {
-	case SELECT:
-		out.WriteString(stringifySelectSatement(a.Statements))
-	case INSERT:
-		out.WriteString(stringifyInsertSatement(a.Statements))
+	switch stmt := a.Statements[0].(type) {
+	case *SelectStatement:
+		out.WriteString(stringifySelectStatement(stmt))
+	case *InsertStatement:
+		out.WriteString(stringifyInsertStatement(stmt))
 	}
 
 	return out.String()
 }
 
-func stringifySelectSatement(tokens []Token) string {
-	stmt := ""
-	multipleSelects := false
+func stringifySelectStatement(stmt *SelectStatement) string {
+	var sb strings.Builder
 
-	for _, tok := range tokens {
-		stmt += tok.Literal
-		if tok.Type == LPAREN {
-			multipleSelects = true
-		}
+	sb.WriteString("SELECT ")
+	if stmt.Distinct {
+		sb.WriteString("DISTINCT ")
+	}
 
-		if tok.Type == RPAREN {
-			multipleSelects = false
-		}
-
-		if !multipleSelects && tok.Type != IDENT && tok.Type != SEMICOLON {
-			stmt += " "
+	if len(stmt.Fields) == 1 && stmt.Fields[0] == "*" {
+		sb.WriteString("* ")
+	} else {
+		for i, f := range stmt.Fields {
+			sb.WriteString(f)
+			if i < len(stmt.Fields)-1 {
+				sb.WriteString(", ")
+			} else {
+				sb.WriteString(" ")
+			}
 		}
 	}
-	return stmt
+
+	sb.WriteString("FROM ")
+	sb.WriteString(string(stmt.TableName))
+	sb.WriteString(" ")
+
+	if len(stmt.Conditions) > 0 {
+		sb.WriteString("WHERE ")
+		for i, c := range stmt.Conditions {
+			if len(c.Logical) > 0 && i > 0 {
+				sb.WriteString(string(c.Logical))
+				sb.WriteString(" ")
+			}
+
+			sb.WriteString(string(c.Ident))
+			sb.WriteString(" ")
+			sb.WriteString(string(c.Condition))
+			sb.WriteString(" ")
+
+			switch v := c.Value.(type) {
+			case string:
+				sb.WriteString(fmt.Sprintf("'%s'", v))
+			case int:
+				sb.WriteString(fmt.Sprintf("%d", v))
+			default:
+				sb.WriteString(fmt.Sprintf("%v", v))
+			}
+
+			if i < len(stmt.Conditions)-1 {
+				sb.WriteString(" ")
+			}
+		}
+		sb.WriteString(" ")
+	}
+
+	if stmt.Limit > 0 {
+		sb.WriteString(fmt.Sprintf("LIMIT %d ", stmt.Limit))
+	}
+
+	if stmt.Offset > 0 {
+		sb.WriteString(fmt.Sprintf("OFFSET %d ", stmt.Offset))
+	}
+
+	return strings.TrimSpace(sb.String()) + ";"
 }
 
-func stringifyInsertSatement(tokens []Token) string {
-	stmt := ""
-	multipleInserts := false
+func stringifyInsertStatement(stmt *InsertStatement) string {
+	var sb strings.Builder
 
-	for _, tok := range tokens {
-		stmt += tok.Literal
-		if tok.Type == LPAREN {
-			multipleInserts = true
-		}
-
-		if tok.Type == RPAREN {
-			multipleInserts = false
-		}
-
-		if !multipleInserts && tok.Type != RPAREN && tok.Type != SEMICOLON {
-			stmt += " "
-		}
-
+	sb.WriteString("INSERT ")
+	if len(stmt.InsertMode) > 0 {
+		sb.WriteString(string(stmt.InsertMode))
+		sb.WriteString(" ")
 	}
-	return stmt
+	sb.WriteString("INTO ")
+	sb.WriteString(string(stmt.TableName))
+	sb.WriteString(" ")
+
+	if len(stmt.Columns) > 0 {
+		sb.WriteString("(")
+		for i, col := range stmt.Columns {
+			sb.WriteString(string(col))
+			if i < len(stmt.Columns)-1 {
+				sb.WriteString(", ")
+			}
+		}
+		sb.WriteString(") ")
+	}
+
+	sb.WriteString("VALUES (")
+	for i, val := range stmt.Values {
+		sb.WriteString(fmt.Sprintf("%v", val))
+		if i < len(stmt.Values)-1 {
+			sb.WriteString(", ")
+		}
+	}
+	sb.WriteString(") ")
+
+	if len(stmt.ReturningFields) > 0 {
+		sb.WriteString("RETURNING ")
+		for i, field := range stmt.ReturningFields {
+			sb.WriteString(string(field))
+			if i < len(stmt.ReturningFields)-1 {
+				sb.WriteString(", ")
+			}
+		}
+		sb.WriteString(" ")
+	}
+
+	return strings.TrimSpace(sb.String()) + ";"
 }

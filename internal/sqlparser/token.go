@@ -10,19 +10,21 @@ const (
 	ILLEGAL TokenType = "ILLEGAL"
 	EOF     TokenType = "EOF"
 
-	STRING TokenType = "STRING"
-
+	COMMENT TokenType = "COMMENT"
 	// Identifiers + Literals
 	IDENT TokenType = "IDENT" // foobar
 	INT   TokenType = "INT"   // 12345
 
 	// Input Identifier
-	BINDPARAM   TokenType = "$"
-	PLACEHOLDER TokenType = "PLACEHOLDER"
+	BINDPARAM TokenType = "$"
+	STRING    TokenType = "STRING"
 
 	// Operators
 	ASSIGN  TokenType = "="
 	ASTERIK TokenType = "*"
+	MINUS   TokenType = "-"
+	PLUS    TokenType = "+"
+	DIVIDE  TokenType = "/"
 
 	// Delimiters
 	COMMA     TokenType = ","

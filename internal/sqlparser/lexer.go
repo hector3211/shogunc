@@ -13,19 +13,8 @@ type Lexer struct {
 
 func NewLexer(input string) *Lexer {
 	l := &Lexer{input: input}
-	l.ReadChar()
+	l.readChar()
 	return l
-}
-
-func (l *Lexer) ReadChar() {
-	if l.readPosition >= len(l.input) {
-		l.ch = 0
-	} else {
-		l.ch = l.input[l.readPosition]
-	}
-
-	l.position = l.readPosition
-	l.readPosition += 1
 }
 
 func (l *Lexer) NextToken() Token {
@@ -34,19 +23,30 @@ func (l *Lexer) NextToken() Token {
 
 	switch l.ch {
 	case '=':
-		tok = CreateToken(ASSIGN, '=')
+		tok = CreateToken(ASSIGN, l.ch)
 	case ',':
-		tok = CreateToken(COMMA, ',')
+		tok = CreateToken(COMMA, l.ch)
 	case ';':
-		tok = CreateToken(SEMICOLON, ';')
+		tok = CreateToken(SEMICOLON, l.ch)
 	case '(':
-		tok = CreateToken(LPAREN, '(')
+		tok = CreateToken(LPAREN, l.ch)
 	case ')':
-		tok = CreateToken(RPAREN, ')')
+		tok = CreateToken(RPAREN, l.ch)
 	case '*':
-		tok = CreateToken(ASTERIK, '*')
+		tok = CreateToken(ASTERIK, l.ch)
 	case '$':
-		tok = CreateToken(BINDPARAM, '$')
+		tok = CreateToken(BINDPARAM, l.ch)
+	// NOTE: Parsing comments before AST
+	case '-':
+		tok = CreateToken(MINUS, l.ch)
+		// if l.peekChar() == '-' {
+		// 	tok.Type = COMMENT
+		// 	tok.Literal = l.readComment()
+		// 	return tok
+		// } else {
+		// }
+	case '+':
+		tok = CreateToken(PLUS, l.ch)
 	case 0:
 		tok.Literal = ""
 		tok.Type = EOF
@@ -69,14 +69,33 @@ func (l *Lexer) NextToken() Token {
 			tok = CreateToken(ILLEGAL, l.ch)
 		}
 	}
-	l.ReadChar()
+	l.readChar()
 	return tok
+}
+
+func (l *Lexer) readChar() {
+	if l.readPosition >= len(l.input) {
+		l.ch = 0
+	} else {
+		l.ch = l.input[l.readPosition]
+	}
+
+	l.position = l.readPosition
+	l.readPosition += 1
+}
+
+func (l *Lexer) peekChar() byte {
+	if l.readPosition >= len(l.input) {
+		return 0
+	} else {
+		return l.input[l.readPosition]
+	}
 }
 
 func (l *Lexer) readNumber() string {
 	position := l.position
 	for isDigit(l.ch) {
-		l.ReadChar()
+		l.readChar()
 	}
 
 	return l.input[position:l.position]
@@ -85,7 +104,7 @@ func (l *Lexer) readNumber() string {
 func (l *Lexer) readIdentifer() string {
 	position := l.position
 	for isLetter(l.ch) || l.ch == '_' {
-		l.ReadChar()
+		l.readChar()
 	}
 
 	return l.input[position:l.position]
@@ -93,9 +112,32 @@ func (l *Lexer) readIdentifer() string {
 
 func (l *Lexer) skipWhiteSpaces() {
 	for l.ch == ' ' || l.ch == '\t' || l.ch == '\n' || l.ch == '\r' {
-		l.ReadChar()
+		l.readChar()
 	}
 }
+
+func (l *Lexer) readString() string {
+	l.readChar() // skip opening '
+	position := l.position
+	for l.ch != '\'' && l.ch != 0 {
+		l.readChar()
+	}
+	str := l.input[position:l.position]
+	l.readChar() // skip closing '
+	return str
+}
+
+// func (l *Lexer) readComment() string {
+// 	l.readChar()
+// 	positition := l.position
+// 	for l.ch != 0 {
+// 		l.readChar()
+// 	}
+//
+// 	str := l.input[positition:l.position]
+// 	l.readChar()
+// 	return str
+// }
 
 func isLetter(ch byte) bool {
 	return unicode.IsLetter(rune(ch))
@@ -107,15 +149,4 @@ func isDigit(ch byte) bool {
 
 func isString(ch byte) bool {
 	return ch == '\''
-}
-
-func (l *Lexer) readString() string {
-	l.ReadChar() // skip opening '
-	position := l.position
-	for l.ch != '\'' && l.ch != 0 {
-		l.ReadChar()
-	}
-	str := l.input[position:l.position]
-	l.ReadChar() // skip closing '
-	return str
 }

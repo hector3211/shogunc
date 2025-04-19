@@ -31,6 +31,8 @@ const (
 	SEMICOLON TokenType = ";"
 	LPAREN    TokenType = "("
 	RPAREN    TokenType = ")"
+	LBRACKET  TokenType = "["
+	RBRACKET  TokenType = "]"
 
 	// Data Query
 	SELECT   TokenType = "SELECT"

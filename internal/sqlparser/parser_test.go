@@ -49,7 +49,7 @@ func TestAstParse(t *testing.T) {
 	for _, file := range gen.Queries {
 		t.Run(fmt.Sprintf("Parsing: %s", file.Name), func(t *testing.T) {
 			lexer := NewLexer(string(file.SQL))
-			parser := NewAst(lexer)
+			parser := NewParser(lexer)
 
 			node, err := parser.Parse()
 			if err != nil {

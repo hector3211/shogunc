@@ -9,11 +9,42 @@ import (
 
 type Node any
 
+type LogicalOp string
+
+const (
+	And     LogicalOp = "And"
+	Or      LogicalOp = "Or"
+	Illegal LogicalOp = ""
+)
+
+func toLogicOp(op string) LogicalOp {
+	switch op {
+	case "AND":
+		return And
+	case "OR":
+		return Or
+	default:
+		return Illegal
+	}
+}
+
+type ConditionOp string
+
+const (
+	EQUAL       ConditionOp = "="
+	NOTEQUAL    ConditionOp = "!="
+	LESSTHAN    ConditionOp = "<"
+	GREATERTHAN ConditionOp = ">"
+	BETWEEN     ConditionOp = "BETWEEN"
+	ISNULL      ConditionOp = "IS NULL"
+	NOTNULL     ConditionOp = "IS NOT NULL"
+)
+
 type Condition struct {
-	Ident     []byte // Column | Order | Group
-	Logical   []byte // AND | OR | NOT
-	Condition []byte // = | != | >
-	Value     any    // $1, $2
+	Left     []byte      // Column
+	Next     LogicalOp   // AND | OR | NOT
+	Operator ConditionOp // = | != | >
+	Right    any         // $1, $2
 }
 
 type SelectStatement struct {
@@ -102,18 +133,18 @@ func (a *Ast) parseSelect() (*SelectStatement, error) {
 			break
 		}
 		cond := Condition{}
-		if len(cond.Logical) == 0 && IsLogicalOperator(a.currentToken.Literal) {
-			cond.Logical = []byte(a.currentToken.Literal)
+		if len(cond.Next) == 0 && IsLogicalOperator(a.currentToken.Literal) {
+			cond.Next = toLogicOp(a.currentToken.Literal)
 			a.NextToken()
 		}
 
 		if a.currentToken.Type == IDENT {
-			cond.Ident = []byte(a.currentToken.Literal)
+			cond.Left = []byte(a.currentToken.Literal)
 			a.NextToken()
 		}
 
-		if len(cond.Condition) == 0 && IsConditional(a.currentToken.Literal) {
-			cond.Condition = []byte(a.currentToken.Literal)
+		if cond.Operator == "" && IsConditional(a.currentToken.Literal) {
+			cond.Operator = ConditionOp(a.currentToken.Literal)
 			a.NextToken()
 		}
 
@@ -124,18 +155,18 @@ func (a *Ast) parseSelect() (*SelectStatement, error) {
 			if err != nil {
 				return nil, fmt.Errorf("invalid bind param: %v", err)
 			}
-			cond.Value = val
+			cond.Right = val
 		case STRING:
-			cond.Value = a.currentToken.Literal
+			cond.Right = a.currentToken.Literal
 		case INT:
 			val, err := strconv.Atoi(a.currentToken.Literal)
 			if err != nil {
 				return nil, fmt.Errorf("invalid bind param: %v", err)
 			}
-			cond.Value = val
+			cond.Right = val
 		}
 
-		if cond.Ident != nil && cond.Condition != nil && cond.Value != nil {
+		if cond.Left != nil && cond.Operator != "" && cond.Right != nil {
 			conditions = append(conditions, cond)
 		}
 		a.NextToken()
@@ -266,17 +297,17 @@ func stringifySelectStatement(stmt *SelectStatement) string {
 	if len(stmt.Conditions) > 0 {
 		sb.WriteString("WHERE ")
 		for i, c := range stmt.Conditions {
-			if len(c.Logical) > 0 && i > 0 {
-				sb.WriteString(string(c.Logical))
+			if len(c.Next) > 0 && i > 0 {
+				sb.WriteString(string(c.Next))
 				sb.WriteString(" ")
 			}
 
-			sb.WriteString(string(c.Ident))
+			sb.WriteString(string(c.Left))
 			sb.WriteString(" ")
-			sb.WriteString(string(c.Condition))
+			sb.WriteString(string(c.Operator))
 			sb.WriteString(" ")
 
-			switch v := c.Value.(type) {
+			switch v := c.Right.(type) {
 			case string:
 				sb.WriteString(fmt.Sprintf("'%s'", v))
 			case int:

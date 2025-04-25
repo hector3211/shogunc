@@ -1,4 +1,4 @@
--- name: CreateUser :one
+-- name: CreateUser :exec
 INSERT INTO users (
     clerk_id,
     first_name,

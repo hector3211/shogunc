@@ -65,7 +65,7 @@ func TestAstParse(t *testing.T) {
 			case *SelectStatement:
 				t.Logf("SELECT - table: %s, fields: %v", stmt.TableName, stmt.Fields)
 				for _, c := range stmt.Conditions {
-					t.Logf("Condition - Ident: %s, Operator: %s, Value: %v\n", c.Ident, c.Condition, c.Value)
+					t.Logf("Condition - Ident: %s, Operator: %s, Value: %v\n", c.Left, c.Operator, c.Right)
 				}
 				t.Logf("LIMIT: %d, OFFSET: %d", stmt.Limit, stmt.Offset)
 
@@ -92,7 +92,7 @@ func TestStringifySelectStatement(t *testing.T) {
 				Fields:    []string{"id", "name"},
 				TableName: []byte("users"),
 				Conditions: []Condition{
-					{Ident: []byte("age"), Condition: []byte(">"), Value: 30},
+					{Left: []byte("age"), Operator: ">", Right: 30},
 				},
 				Limit:  10,
 				Offset: 5,
@@ -114,7 +114,7 @@ func TestStringifySelectStatement(t *testing.T) {
 				Fields:    []string{"id", "name"},
 				TableName: []byte("products"),
 				Conditions: []Condition{
-					{Ident: []byte("price"), Condition: []byte(">="), Value: 100},
+					{Left: []byte("price"), Operator: ">=", Right: 100},
 				},
 				Distinct: true,
 				Limit:    0,

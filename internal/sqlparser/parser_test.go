@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func setUpGenerator(t *testing.T) *generate.GeneratorBuilder {
+func setUpGenerator(t *testing.T) *generate.Generator {
 	t.Helper()
 	configContents, err := os.ReadFile("../../shogunc.yml")
 	if err != nil {

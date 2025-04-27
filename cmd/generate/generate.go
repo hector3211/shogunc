@@ -9,6 +9,28 @@ import (
 	"strings"
 )
 
+type SqlType any
+
+type Field struct {
+	Name      string  // "description"
+	DataType  string  // "TEXT"
+	NotNull   bool    // true if NOT NULL, false if nullable
+	Default   *string // optional default value
+	IsPrimary bool    // true if PRIMARY KEY
+	IsUnique  bool    // true if UNIQUE
+	Comment   *string // optional comment
+}
+
+type TableType struct {
+	Name  []byte
+	Field []Field
+}
+
+type EnumType struct {
+	name   []byte
+	values []string
+}
+
 type Driver string
 
 const (
@@ -30,15 +52,16 @@ type Query struct {
 	SQL  []byte
 }
 
-type GeneratorBuilder struct {
+type Generator struct {
 	QueryPath  []byte
 	Queries    []Query
+	Types      []SqlType
 	SchemaPath []byte
 	Driver     Driver
 }
 
-func NewGenerator() *GeneratorBuilder {
-	return &GeneratorBuilder{
+func NewGenerator() *Generator {
+	return &Generator{
 		QueryPath:  []byte{},
 		Queries:    []Query{},
 		SchemaPath: []byte{},
@@ -47,7 +70,7 @@ func NewGenerator() *GeneratorBuilder {
 }
 
 // Generate code
-func (g *GeneratorBuilder) Execute() error {
+func (g *Generator) Execute() error {
 	err := g.LoadConfig()
 	if err != nil {
 		return err
@@ -57,7 +80,7 @@ func (g *GeneratorBuilder) Execute() error {
 }
 
 // Read shogunc config file
-func (g GeneratorBuilder) HasConfig() bool {
+func (g Generator) HasConfig() bool {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return false
@@ -72,7 +95,7 @@ func (g GeneratorBuilder) HasConfig() bool {
 // schema
 // queries
 // driver
-func (g *GeneratorBuilder) ParseConfig(fileContents []byte) error {
+func (g *Generator) ParseConfig(fileContents []byte) error {
 	lines := strings.Split(string(fileContents), "\n")
 	matchers := map[string]struct{}{
 		"queries": {},
@@ -122,7 +145,7 @@ func (g *GeneratorBuilder) ParseConfig(fileContents []byte) error {
 	return nil
 }
 
-func (g *GeneratorBuilder) LoadConfig() error {
+func (g *Generator) LoadConfig() error {
 	if !g.HasConfig() {
 		return fmt.Errorf("shogunc config file does not exists")
 	}
@@ -143,7 +166,7 @@ func (g *GeneratorBuilder) LoadConfig() error {
 
 // Read sql file / files
 // Look for special tag: --name: GetUserById :one
-func (g *GeneratorBuilder) LoadSqlFiles() error {
+func (g *Generator) LoadSqlFiles() error {
 	// cwd, err := os.Getwd()
 	// if err != nil {
 	// 	return err
@@ -182,7 +205,7 @@ func (g *GeneratorBuilder) LoadSqlFiles() error {
 	return nil
 }
 
-func (g *GeneratorBuilder) ParseSqlFile(file *os.File) error {
+func (g *Generator) ParseSqlFile(file *os.File) error {
 	var queries []Query
 	scanner := bufio.NewScanner(file)
 
@@ -232,8 +255,148 @@ func (g *GeneratorBuilder) ParseSqlFile(file *os.File) error {
 	return nil
 }
 
-func (g GeneratorBuilder) listSqlQueries() {
+func (g Generator) LoadSchema() error {
+	// cwd, err := os.Getwd()
+	// if err != nil {
+	// 	return err
+	// }
+	// directory := filepath.Join(cwd, string(g.QueryPath))
+	// TODO: remove this after testing
+	directory := fmt.Sprintf("../../%s", string(g.SchemaPath))
+	dirEntries, err := os.ReadDir(directory)
+	if err != nil {
+		return err
+	}
+	// fmt.Printf("DIR: %s\n", directory)
+
+	for _, entry := range dirEntries {
+		if entry.IsDir() {
+			continue // Skip directories
+		}
+		if !strings.HasSuffix(entry.Name(), ".sql") {
+			continue
+		}
+
+		fullPath := filepath.Join(directory, entry.Name())
+		file, err := os.Open(fullPath)
+		if err != nil {
+			return fmt.Errorf("failed to open %s: %v", fullPath, err)
+		}
+		defer file.Close()
+
+		if err := g.ParseSqlFile(file); err != nil {
+			return fmt.Errorf("failed to parse %s: %v", fullPath, err)
+		}
+	}
+
+	return nil
+}
+
+func (g *Generator) ParseSchemaFile(file *os.File) error {
+	var types []TableType
+	scanner := bufio.NewScanner(file)
+
+	// Shogunc Tag: -- name: GetUserById :one
+	tablePattern := regexp.MustCompile(`(?i)CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+"([a-zA-Z_][a-zA-Z0-9_]*)"`)
+	// enumPattern := regexp.MustCompile(`(?i)CREATE\s+TYPE\s+"([a-zA-Z_][a-zA-Z0-9_]*)"\s+AS\s+ENUM\s*\(`)
+	// foreignKeyPattern := regexp.MustCompile(`(?i)FOREIGN\s+KEY\s*\(([^)]+)\)\s+REFERENCES\s+"([a-zA-Z_][a-zA-Z0-9_]*)"\s*\(([a-zA-Z_][a-zA-Z0-9_]*)\)`)
+	// indexPattern := regexp.MustCompile(`(?i)CREATE\s+INDEX\s+"([a-zA-Z_][a-zA-Z0-9_]*)"\s+ON\s+"([a-zA-Z_][a-zA-Z0-9_]*)"`)
+
+	var current *TableType
+	inTable := false
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if matches := tablePattern.FindStringSubmatch(line); matches != nil {
+			if len(matches) > 1 {
+				current = &TableType{
+					Name: []byte(matches[1]),
+				}
+				inTable = true
+			}
+			continue
+		}
+
+		if !inTable {
+			continue
+		}
+
+		if strings.Contains(line, ")") {
+			types = append(types, *current)
+			current = nil
+			inTable = false
+			continue
+		}
+
+		field, ok := parseFieldLine(line)
+		if ok {
+			current.Field = append(current.Field, *field)
+		}
+	}
+
+	g.Types = append(g.Types, types)
+
+	return nil
+}
+
+func parseFieldLine(line string) (*Field, bool) {
+	line = strings.TrimSpace(line)
+	if line == "" || strings.HasPrefix(line, "--") {
+		return nil, false
+	}
+
+	line = strings.TrimSuffix(line, ",")
+
+	parts := strings.Fields(line)
+	if len(parts) < 2 {
+		return nil, false
+	}
+
+	name := strings.Trim(parts[0], `"`)
+	dataType := parts[1]
+
+	notNull := false
+	var defaultVal *string
+
+	for i := 2; i < len(parts); i++ {
+		p := strings.ToUpper(parts[i])
+
+		if p == "NOT" && i+1 < len(parts) && strings.ToUpper(parts[i+1]) == "NULL" {
+			notNull = true
+			i++
+		}
+
+		if p == "DEFAULT" && i+1 < len(parts) {
+			val := parts[i+1]
+			defaultVal = &val
+			i++
+		}
+	}
+
+	return &Field{
+		Name:     name,
+		DataType: dataType,
+		NotNull:  notNull,
+		Default:  defaultVal,
+	}, true
+}
+
+func (g Generator) listSqlQueries() {
 	for _, stmt := range g.Queries {
 		fmt.Printf("%s\n", string(stmt.SQL))
+	}
+}
+
+func NewTableType(name []byte, fields []Field) *TableType {
+	return &TableType{
+		Name:  name,
+		Field: fields,
+	}
+}
+
+func NewEnumType(name []byte, values []string) *EnumType {
+	return &EnumType{
+		name:   name,
+		values: values,
 	}
 }

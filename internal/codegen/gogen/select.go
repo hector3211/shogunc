@@ -7,70 +7,54 @@ import (
 	"strings"
 )
 
-type GoSelectFuncGenerator struct {
-	b        strings.Builder
-	funcName string
-	tagType  generate.Type
-}
-
-func NewGoSelectFuncGenerator(funcName string, tagType generate.Type) *GoSelectFuncGenerator {
-	return &GoSelectFuncGenerator{
-		funcName: funcName,
-		tagType:  tagType,
-	}
-}
-
-// TODO: finish
-func (g *GoSelectFuncGenerator) GenerateFunc(body string) string {
-	var sb strings.Builder
-
-	sb.WriteString(fmt.Sprintf("func %s() ", g.funcName))
-	switch g.tagType {
-	case generate.ONE, generate.MANY:
-		sb.WriteString("")
+func GenerateSelectFunction(tagType generate.Type, query *sqlparser.SelectStatement) string {
+	switch tagType {
+	case generate.ONE:
+		return GenerateSelectOne(query)
+	case generate.MANY:
+		return ""
 	case generate.EXEC:
-		sb.WriteString("")
+		return ""
 	default:
-		sb.WriteString("")
+		return ""
 	}
-
-	return sb.String()
 }
 
-func (g *GoSelectFuncGenerator) GenerateQueryOne(tag *generate.Query, query *sqlparser.SelectStatement) string {
-	g.b.WriteString("query := ")
+func GenerateSelectOne(query *sqlparser.SelectStatement) string {
+	var sb strings.Builder
+	sb.WriteString("query := ")
 
-	if len(query.Fields) == 0 {
-		g.b.WriteString("Select('*')")
+	if len(query.Fields) == 1 && query.Fields[0] == "*" {
+		sb.WriteString("Select('*')")
 	} else {
-		g.b.WriteString("Select(")
+		sb.WriteString("Select(")
 		for idx, f := range query.Fields {
-			g.b.WriteString(f)
+			sb.WriteString(f)
 
 			if idx < len(query.Fields)-1 {
-				g.b.WriteString(",")
+				sb.WriteString(",")
 			}
 		}
-		g.b.WriteString(")")
+		sb.WriteString(")")
 	}
 
-	g.b.WriteString(fmt.Sprintf(".From(%s)", query.TableName))
+	sb.WriteString(fmt.Sprintf(".From(%s)", query.TableName))
 
-	g.b.WriteString(".Where(")
+	sb.WriteString(".Where(")
 	for idx, c := range query.Conditions {
 		if c.Next != sqlparser.Illegal {
-			g.b.WriteString(fmt.Sprintf("%s,", shoguncNextOp(c.Next)))
+			sb.WriteString(fmt.Sprintf("%s,", shoguncNextOp(c.Next)))
 		}
-		g.b.WriteString(shoguncConditionalOp(c))
+		sb.WriteString(shoguncConditionalOp(c))
 
 		if idx < len(query.Conditions)-1 {
-			g.b.WriteString(",")
+			sb.WriteString(",")
 		}
 	}
-	g.b.WriteString(")")
+	sb.WriteString(")")
 
-	g.b.WriteString(".Build()")
-	return g.b.String()
+	sb.WriteString(".Build()")
+	return sb.String()
 }
 
 func shoguncNextOp(nextOp sqlparser.LogicalOp) string {

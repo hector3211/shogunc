@@ -5,6 +5,13 @@ import (
 	"strings"
 )
 
+var (
+	tableReg = regexp.MustCompile(`(?i)CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+"([a-zA-Z_][a-zA-Z0-9_]*)"`)
+	enumReg  = regexp.MustCompile(`(?i)CREATE\s+TYPE\s+"([a-zA-Z_][a-zA-Z0-9_]*)"\s+AS\s+ENUM\s*\(`)
+	// foreignKeyPattern := regexp.MustCompile(`(?i)FOREIGN\s+KEY\s*\(([^)]+)\)\s+REFERENCES\s+"([a-zA-Z_][a-zA-Z0-9_]*)"\s*\(([a-zA-Z_][a-zA-Z0-9_]*)\)`)
+	// indexPattern := regexp.MustCompile(`(?i)CREATE\s+INDEX\s+"([a-zA-Z_][a-zA-Z0-9_]*)"\s+ON\s+"([a-zA-Z_][a-zA-Z0-9_]*)"`)
+)
+
 type SqlType any
 
 type Field struct {
@@ -23,8 +30,8 @@ type TableType struct {
 }
 
 type EnumType struct {
-	name   []byte
-	values []string
+	Name   []byte
+	Values []string
 }
 
 type SchemaParser struct {
@@ -44,14 +51,21 @@ func (p *SchemaParser) ParseLine(line string) error {
 		return nil
 	}
 	if p.InTable {
-		return p.parseTableBody(line)
+		return p.parseTable(line)
+	}
+
+	if p.matchEnumStart(line) {
+		return nil
+	}
+
+	if p.InEnum {
+		return p.parseEnum(line)
 	}
 	// Future: handle enums, indexes, etc.
 	return nil
 }
 
 func (p *SchemaParser) matchTableStart(line string) bool {
-	tableReg := regexp.MustCompile(`(?i)CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+"([a-zA-Z_][a-zA-Z0-9_]*)"`)
 	if matches := tableReg.FindStringSubmatch(line); matches != nil {
 		p.CurrentTable = &TableType{
 			Name: []byte(matches[1]),
@@ -62,7 +76,7 @@ func (p *SchemaParser) matchTableStart(line string) bool {
 	return false
 }
 
-func (p *SchemaParser) parseTableBody(line string) error {
+func (p *SchemaParser) parseTable(line string) error {
 	if strings.Contains(line, ")") {
 		p.Types = append(p.Types, *p.CurrentTable)
 		p.CurrentTable = nil
@@ -71,7 +85,7 @@ func (p *SchemaParser) parseTableBody(line string) error {
 	}
 
 	field, ok := parseFieldLine(line)
-	if ok {
+	if ok && p.CurrentTable != nil {
 		p.CurrentTable.Field = append(p.CurrentTable.Field, *field)
 	}
 	return nil
@@ -105,9 +119,9 @@ func parseFieldLine(line string) (*Field, bool) {
 		}
 
 		if p == "DEFAULT" && i+1 < len(parts) {
-			val := parts[i+1]
+			val := strings.Join(parts[i+1:], " ")
 			defaultVal = &val
-			i++
+			break
 		}
 	}
 
@@ -117,4 +131,39 @@ func parseFieldLine(line string) (*Field, bool) {
 		NotNull:  notNull,
 		Default:  defaultVal,
 	}, true
+}
+
+func (p *SchemaParser) matchEnumStart(line string) bool {
+	if matches := enumReg.FindStringSubmatch(line); matches != nil {
+		p.CurrentEnum = &EnumType{
+			Name: []byte(matches[1]),
+		}
+		p.InEnum = true
+		return true
+	}
+	return false
+}
+
+func (p *SchemaParser) parseEnum(line string) error {
+	if strings.Contains(line, ")") {
+		p.Types = append(p.Types, *p.CurrentEnum)
+		p.CurrentEnum = nil
+		p.InEnum = false
+		return nil
+	}
+
+	p.parseEnumLine(line)
+	return nil
+}
+
+func (p *SchemaParser) parseEnumLine(line string) bool {
+	line = strings.TrimSpace(line)
+	if line == "" || strings.HasPrefix(line, "--") {
+		return false
+	}
+	line = strings.TrimSuffix(line, ",")
+	val := strings.Trim(line, `"`)
+
+	p.CurrentEnum.Values = append(p.CurrentEnum.Values, val)
+	return true
 }

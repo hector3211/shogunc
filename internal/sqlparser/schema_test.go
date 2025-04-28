@@ -10,7 +10,7 @@ func TestSchemaParser_TableParsing(t *testing.T) {
 
 	lines := []string{
 		`CREATE TABLE IF NOT EXISTS "users" (`,
-		`  "id" SERIAL NOT NULL,`,
+		`  "id" SERIAL PRIMARY KEY NOT NULL,`,
 		`  "username" TEXT NOT NULL DEFAULT 'guest',`,
 		`  "email" TEXT,`,
 		`  "created_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP`,
@@ -43,13 +43,14 @@ func TestSchemaParser_TableParsing(t *testing.T) {
 	tests := []struct {
 		name       string
 		dataType   string
+		isPrimary  bool
 		notNull    bool
 		hasDefault bool
 	}{
-		{"id", "SERIAL", true, false},
-		{"username", "TEXT", true, true},
-		{"email", "TEXT", false, false},
-		{"created_at", "TIMESTAMP", false, true},
+		{"id", "SERIAL", true, true, false},
+		{"username", "TEXT", false, true, true},
+		{"email", "TEXT", false, false, false},
+		{"created_at", "TIMESTAMP", false, false, true},
 	}
 
 	for i, expected := range tests {
@@ -59,6 +60,9 @@ func TestSchemaParser_TableParsing(t *testing.T) {
 		}
 		if field.DataType != expected.dataType {
 			t.Errorf("field[%d]: expected datatype %s, got %s", i, expected.dataType, field.DataType)
+		}
+		if field.IsPrimary != expected.isPrimary {
+			t.Errorf("field[%d]: expected primary %v, got %v", i, expected.isPrimary, field.IsPrimary)
 		}
 		if field.NotNull != expected.notNull {
 			t.Errorf("field[%d]: expected notNull %v, got %v", i, expected.notNull, field.NotNull)

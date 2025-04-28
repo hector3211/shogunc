@@ -96,7 +96,6 @@ func parseFieldLine(line string) (*Field, bool) {
 	if line == "" || strings.HasPrefix(line, "--") {
 		return nil, false
 	}
-
 	line = strings.TrimSuffix(line, ",")
 
 	parts := strings.Fields(line)
@@ -108,10 +107,15 @@ func parseFieldLine(line string) (*Field, bool) {
 	dataType := parts[1]
 
 	notNull := false
+	isPrimary := false
 	var defaultVal *string
 
 	for i := 2; i < len(parts); i++ {
 		p := strings.ToUpper(parts[i])
+
+		if p == "PRIMARY" && i+1 < len(parts) && strings.ToUpper(parts[i+1]) == "KEY" {
+			isPrimary = true
+		}
 
 		if p == "NOT" && i+1 < len(parts) && strings.ToUpper(parts[i+1]) == "NULL" {
 			notNull = true
@@ -126,10 +130,11 @@ func parseFieldLine(line string) (*Field, bool) {
 	}
 
 	return &Field{
-		Name:     name,
-		DataType: dataType,
-		NotNull:  notNull,
-		Default:  defaultVal,
+		Name:      name,
+		DataType:  dataType,
+		NotNull:   notNull,
+		Default:   defaultVal,
+		IsPrimary: isPrimary,
 	}, true
 }
 

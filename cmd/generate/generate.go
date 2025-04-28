@@ -9,28 +9,6 @@ import (
 	"strings"
 )
 
-type SqlType any
-
-type Field struct {
-	Name      string  // "description"
-	DataType  string  // "TEXT"
-	NotNull   bool    // true if NOT NULL, false if nullable
-	Default   *string // optional default value
-	IsPrimary bool    // true if PRIMARY KEY
-	IsUnique  bool    // true if UNIQUE
-	Comment   *string // optional comment
-}
-
-type TableType struct {
-	Name  []byte
-	Field []Field
-}
-
-type EnumType struct {
-	name   []byte
-	values []string
-}
-
 type Driver string
 
 const (
@@ -55,7 +33,6 @@ type Query struct {
 type Generator struct {
 	QueryPath  []byte
 	Queries    []Query
-	Types      []SqlType
 	SchemaPath []byte
 	Driver     Driver
 }
@@ -210,7 +187,7 @@ func (g *Generator) ParseSqlFile(file *os.File) error {
 	scanner := bufio.NewScanner(file)
 
 	// Shogunc Tag: -- name: GetUserById :one
-	re := regexp.MustCompile(`--\s*name:\s*(\w+)\s*:(\w+)`)
+	tagReg := regexp.MustCompile(`--\s*name:\s*(\w+)\s*:(\w+)`)
 	var current *Query
 	var sqlBuilder strings.Builder
 
@@ -218,7 +195,7 @@ func (g *Generator) ParseSqlFile(file *os.File) error {
 		line := scanner.Text()
 
 		// Match on shogunc tag
-		if matches := re.FindStringSubmatch(line); matches != nil {
+		if matches := tagReg.FindStringSubmatch(line); matches != nil {
 			if current != nil {
 				current.SQL = []byte(strings.TrimSpace(sqlBuilder.String()))
 				queries = append(queries, *current)
@@ -290,113 +267,4 @@ func (g Generator) LoadSchema() error {
 	}
 
 	return nil
-}
-
-func (g *Generator) ParseSchemaFile(file *os.File) error {
-	var types []TableType
-	scanner := bufio.NewScanner(file)
-
-	// Shogunc Tag: -- name: GetUserById :one
-	tablePattern := regexp.MustCompile(`(?i)CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+"([a-zA-Z_][a-zA-Z0-9_]*)"`)
-	// enumPattern := regexp.MustCompile(`(?i)CREATE\s+TYPE\s+"([a-zA-Z_][a-zA-Z0-9_]*)"\s+AS\s+ENUM\s*\(`)
-	// foreignKeyPattern := regexp.MustCompile(`(?i)FOREIGN\s+KEY\s*\(([^)]+)\)\s+REFERENCES\s+"([a-zA-Z_][a-zA-Z0-9_]*)"\s*\(([a-zA-Z_][a-zA-Z0-9_]*)\)`)
-	// indexPattern := regexp.MustCompile(`(?i)CREATE\s+INDEX\s+"([a-zA-Z_][a-zA-Z0-9_]*)"\s+ON\s+"([a-zA-Z_][a-zA-Z0-9_]*)"`)
-
-	var current *TableType
-	inTable := false
-
-	for scanner.Scan() {
-		line := scanner.Text()
-		if matches := tablePattern.FindStringSubmatch(line); matches != nil {
-			if len(matches) > 1 {
-				current = &TableType{
-					Name: []byte(matches[1]),
-				}
-				inTable = true
-			}
-			continue
-		}
-
-		if !inTable {
-			continue
-		}
-
-		if strings.Contains(line, ")") {
-			types = append(types, *current)
-			current = nil
-			inTable = false
-			continue
-		}
-
-		field, ok := parseFieldLine(line)
-		if ok {
-			current.Field = append(current.Field, *field)
-		}
-	}
-
-	g.Types = append(g.Types, types)
-
-	return nil
-}
-
-func parseFieldLine(line string) (*Field, bool) {
-	line = strings.TrimSpace(line)
-	if line == "" || strings.HasPrefix(line, "--") {
-		return nil, false
-	}
-
-	line = strings.TrimSuffix(line, ",")
-
-	parts := strings.Fields(line)
-	if len(parts) < 2 {
-		return nil, false
-	}
-
-	name := strings.Trim(parts[0], `"`)
-	dataType := parts[1]
-
-	notNull := false
-	var defaultVal *string
-
-	for i := 2; i < len(parts); i++ {
-		p := strings.ToUpper(parts[i])
-
-		if p == "NOT" && i+1 < len(parts) && strings.ToUpper(parts[i+1]) == "NULL" {
-			notNull = true
-			i++
-		}
-
-		if p == "DEFAULT" && i+1 < len(parts) {
-			val := parts[i+1]
-			defaultVal = &val
-			i++
-		}
-	}
-
-	return &Field{
-		Name:     name,
-		DataType: dataType,
-		NotNull:  notNull,
-		Default:  defaultVal,
-	}, true
-}
-
-func (g Generator) listSqlQueries() {
-	for _, stmt := range g.Queries {
-		fmt.Printf("%s\n", string(stmt.SQL))
-	}
-}
-
-func NewTableType(name []byte, fields []Field) *TableType {
-	return &TableType{
-		Name:  name,
-		Field: fields,
-	}
-}
-
-func NewEnumType(name []byte, values []string) *EnumType {
-	return &EnumType{
-		name:   name,
-		values: values,
-	}
 }

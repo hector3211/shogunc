@@ -9,12 +9,20 @@ type TokenType string
 const (
 	ILLEGAL TokenType = "ILLEGAL"
 	EOF     TokenType = "EOF"
-
-	STRING TokenType = "STRING"
+	STRING  TokenType = "STRING"
 
 	// Identifiers + Literals
-	IDENT TokenType = "IDENT" // foobar
-	INT   TokenType = "INT"   // 12345
+	IDENT     TokenType = "IDENT" // foobar
+	DEFAULT   TokenType = "DEFAULT"
+	UUID      TokenType = "UUID"
+	INT       TokenType = "INT" // 12345
+	BIGINT    TokenType = "BIGINT"
+	SMALLINT  TokenType = "SMALLINT"
+	DECIMAL   TokenType = "DECIMAL"
+	VARCAHR   TokenType = "VARCAHR"
+	TEXT      TokenType = "TEXT"
+	BOOLEAN   TokenType = "BOOLEAN"
+	TIMESTAMP TokenType = "TIMESTAMP"
 
 	// Input Identifier
 	BINDPARAM   TokenType = "$"
@@ -54,12 +62,17 @@ const (
 	// Data Definition
 	CREATE   TokenType = "CREATE"
 	TABLE    TokenType = "TABLE"
+	TYPE     TokenType = "TYPE"
+	PRIMARY  TokenType = "PRIMARY"
+	KEY      TokenType = "KEY"
 	DATABASE TokenType = "DATABASE"
 	INDEX    TokenType = "INDEX"
 	VIEW     TokenType = "VIEW"
 	DROP     TokenType = "DROP"
 	ALTER    TokenType = "ALTER"
 	TRUNCATE TokenType = "TRUNCATE"
+	ENUM     TokenType = "ENUM"
+	UNIQUE   TokenType = "UNIQUE"
 
 	// Condition & Logical
 	AND    TokenType = "AND"
@@ -112,7 +125,10 @@ var keyWords = map[string]TokenType{
 	"SET":       SET,
 	"DELETE":    DELETE,
 	"CREATE":    CREATE,
+	"PRIMARY":   PRIMARY,
+	"KEY":       KEY,
 	"TABLE":     TABLE,
+	"TYPE":      TYPE,
 	"DROP":      DROP,
 	"ALTER":     ALTER,
 	"ADD":       ADD,
@@ -149,8 +165,22 @@ var keyWords = map[string]TokenType{
 	"RETURNING": RETURNING,
 }
 
+var dbTypes = map[string]TokenType{
+	"INT":       INT,
+	"VARCHAR":   VARCAHR,
+	"TEXT":      TEXT,
+	"BOOLEAN":   BOOLEAN,
+	"TIMESTAMP": TIMESTAMP,
+	"UUID":      UUID,
+	"DECIMAL":   DECIMAL,
+}
+
 func LookupIdent(ident string) TokenType {
 	if tok, ok := keyWords[ident]; ok {
+		return tok
+	}
+
+	if tok, ok := dbTypes[ident]; ok {
 		return tok
 	}
 	return IDENT
@@ -180,4 +210,11 @@ func IsLogicalOperator(op string) bool {
 	default:
 		return false
 	}
+}
+
+func IsDatabaseType(t string) bool {
+	if _, ok := dbTypes[t]; ok {
+		return true
+	}
+	return false
 }

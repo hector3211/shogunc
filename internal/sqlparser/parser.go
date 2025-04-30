@@ -2,12 +2,32 @@ package sqlparser
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 )
 
 type Node any
+
+type Field struct {
+	Name      string  // "description"
+	DataType  Token   // "TEXT"
+	NotNull   bool    // true if NOT NULL, false if nullable
+	Default   *string // optional default value
+	IsPrimary bool    // true if PRIMARY KEY
+	IsUnique  bool    // true if UNIQUE
+}
+
+type TableType struct {
+	Name   []byte
+	Fields []Field
+}
+
+type EnumType struct {
+	Name   []byte
+	Values []string
+}
 
 type LogicalOp string
 
@@ -91,6 +111,14 @@ func (a *Ast) Parse() (Node, error) {
 		return a.parseSelect()
 	case INSERT:
 		return a.parserInsert()
+	case CREATE:
+		a.NextToken()
+		if a.currentToken.Type == TABLE {
+			return a.parseTable()
+		} else if a.currentToken.Type == TYPE {
+			return a.parseType()
+		}
+		return nil, fmt.Errorf("unexpected token: %s", a.currentToken.Literal)
 	default:
 		return nil, fmt.Errorf("unexpected token: %s", a.currentToken.Literal)
 	}
@@ -253,6 +281,103 @@ func (a *Ast) parserInsert() (*InsertStatement, error) {
 	return stmt, nil
 }
 
+func (a *Ast) parseTable() (*TableType, error) {
+	stmt := &TableType{}
+
+	for a.currentToken.Type != STRING {
+		a.NextToken()
+	}
+
+	if a.currentToken.Type != STRING {
+		return nil, fmt.Errorf("[PARSER_TABLE] unexpected token: %s", a.currentToken.Literal)
+	}
+	stmt.Name = []byte(a.currentToken.Literal)
+	a.NextToken()
+
+	var fields []Field
+	for a.currentToken.Type != RPAREN {
+		var field Field
+		if a.currentToken.Type != STRING {
+			return nil, fmt.Errorf("[PARSER_TABLE] unexpected token: %s", a.currentToken.Literal)
+		}
+		field.Name = a.currentToken.Literal
+		a.NextToken()
+		if a.currentToken.Type == IDENT {
+			if IsDatabaseType(a.currentToken.Literal) {
+				// TODO add datatype validation
+				field.DataType = a.currentToken
+				a.NextToken()
+			}
+		} else if a.currentToken.Type == STRING {
+			field.DataType = Token{Type: ENUM, Literal: a.currentToken.Literal}
+			a.NextToken()
+		}
+
+		if a.currentToken.Type == PRIMARY && a.peekToken.Type == KEY {
+			field.IsPrimary = true
+			a.NextToken() // consume PRIMARY
+			a.NextToken() // consume KEY
+		}
+
+		if a.currentToken.Type == NOT && a.peekToken.Type == NULL {
+			field.NotNull = true
+			a.NextToken() // consume NOT
+			a.NextToken() // consume NULL
+		}
+
+		if a.currentToken.Type == UNIQUE {
+			field.IsUnique = true
+			a.NextToken()
+		}
+
+		if a.currentToken.Type == DEFAULT {
+			a.NextToken()
+			if a.currentToken.Type == STRING && a.peekToken.Type == STRING {
+				// Enum case
+				a.NextToken()
+				field.Default = &a.currentToken.Literal
+			} else {
+				field.Default = &a.currentToken.Literal
+			}
+		}
+
+		fields = append(fields, field)
+		a.NextToken()
+	}
+
+	stmt.Fields = fields
+	return stmt, nil
+}
+
+func (a *Ast) parseType() (*EnumType, error) {
+	stmt := &EnumType{}
+	enumFlag := false
+	a.NextToken()
+
+	if a.currentToken.Type != STRING {
+		return nil, fmt.Errorf("unexpected token: %s", a.currentToken.Literal)
+	}
+	stmt.Name = []byte(a.currentToken.Literal)
+
+	if a.currentToken.Type == AS && a.peekToken.Type == ENUM {
+		enumFlag = true
+	}
+	a.NextToken()
+
+	for a.currentToken.Type != RPAREN {
+		if a.currentToken.Type == STRING {
+			stmt.Values = append(stmt.Values, a.currentToken.Literal)
+		}
+		a.NextToken()
+	}
+
+	if !enumFlag {
+		return nil, errors.New("failed parsing ENUM invalid")
+	}
+
+	return stmt, nil
+}
+
 func (a *Ast) String() string {
 	var out bytes.Buffer
 	if len(a.Statements) == 0 {
@@ -378,4 +503,62 @@ func stringifyInsertStatement(stmt *InsertStatement) string {
 	}
 
 	return strings.TrimSpace(sb.String()) + ";"
+}
+
+func stringifyTableType(t *TableType) string {
+	var sb strings.Builder
+	sb.WriteString("CREATE TABLE IF NOT EXISTS ")
+	sb.WriteString(fmt.Sprintf("\"%s\"", t.Name))
+	sb.WriteString(" (\n")
+
+	for i, field := range t.Fields {
+		if field.DataType.Type == ENUM {
+			sb.WriteString(fmt.Sprintf("  \"%s\" \"%s\"", field.Name, field.DataType.Literal))
+		} else {
+			sb.WriteString(fmt.Sprintf("  \"%s\" %v", field.Name, field.DataType.Literal))
+		}
+
+		if field.NotNull {
+			sb.WriteString(" NOT NULL")
+		}
+		if field.IsUnique {
+			sb.WriteString(" UNIQUE")
+		}
+		if field.IsPrimary {
+			sb.WriteString(" PRIMARY KEY")
+		}
+		if field.Default != nil {
+			sb.WriteString(" DEFAULT ")
+			// Optional: quote string values
+			if strings.HasPrefix(*field.Default, "'") || strings.HasPrefix(*field.Default, "\"") {
+				sb.WriteString(*field.Default)
+			} else {
+				sb.WriteString(fmt.Sprintf("'%s'", *field.Default))
+			}
+		}
+
+		if i < len(t.Fields)-1 {
+			sb.WriteString(",\n")
+		} else {
+			sb.WriteString("\n")
+		}
+	}
+
+	sb.WriteString(");")
+	return sb.String()
+}
+
+func stringifyEnumType(e *EnumType) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("CREATE TYPE \"%s\" AS ENUM (", e.Name))
+
+	for i, val := range e.Values {
+		sb.WriteString(fmt.Sprintf("'%s'", val))
+		if i < len(e.Values)-1 {
+			sb.WriteString(",")
+		}
+	}
+
+	sb.WriteString(");")
+	return sb.String()
 }

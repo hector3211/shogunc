@@ -13,10 +13,10 @@ type GoFuncGenerator struct {
 	sb       strings.Builder
 }
 
-func NewGoFuncGenerator(funcName []byte, tagType generate.Type) *GoFuncGenerator {
+func NewGoFuncGenerator(query generate.Query) *GoFuncGenerator {
 	return &GoFuncGenerator{
-		funcName: funcName,
-		tagType:  tagType,
+		funcName: query.Name,
+		tagType:  query.Type,
 	}
 }
 

@@ -43,7 +43,7 @@ func TestAstLoadTokens(t *testing.T) {
 	}
 }
 
-func TestAstParse(t *testing.T) {
+func TestAstStatementParsing(t *testing.T) {
 	gen := setUpGenerator(t)
 
 	for _, file := range gen.Queries {
@@ -189,4 +189,61 @@ func TestStringifyInsertStatement(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestParseTable(t *testing.T) {
+}
+
+func TestStringifyTableType(t *testing.T) {
+	table := &TableType{
+		Name: []byte("users"),
+		Fields: []Field{
+			{
+				Name:      "id",
+				DataType:  Token{Type: UUID, Literal: "UUID"},
+				IsPrimary: true,
+				NotNull:   true,
+			},
+			{
+				Name:     "email",
+				DataType: Token{Type: TEXT, Literal: "TEXT"},
+				NotNull:  true,
+				IsUnique: true,
+			},
+			{
+				Name:     "status",
+				DataType: Token{Type: ENUM, Literal: "UserStatus"},
+				Default:  strPtr("active"),
+			},
+		},
+	}
+
+	expected := `CREATE TABLE IF NOT EXISTS "users" (
+  "id" UUID NOT NULL PRIMARY KEY,
+  "email" TEXT NOT NULL UNIQUE,
+  "status" "UserStatus" DEFAULT 'active'
+);`
+
+	got := stringifyTableType(table)
+	if got != expected {
+		t.Errorf("unexpected table SQL:\nGot:\n%s\n\nExpected:\n%s", got, expected)
+	}
+}
+
+func TestStringifyEnumType(t *testing.T) {
+	enum := &EnumType{
+		Name:   []byte("UserStatus"),
+		Values: []string{"active", "inactive", "banned"},
+	}
+
+	expected := `CREATE TYPE "UserStatus" AS ENUM ('active','inactive','banned');`
+
+	got := stringifyEnumType(enum)
+	if got != expected {
+		t.Errorf("unexpected enum SQL:\nGot:\n%s\n\nExpected:\n%s", got, expected)
+	}
+}
+
+func strPtr(s string) *string {
+	return &s
 }

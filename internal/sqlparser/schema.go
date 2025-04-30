@@ -14,25 +14,25 @@ var (
 
 type SqlType any
 
-type Field struct {
-	Name      string  // "description"
-	DataType  string  // "TEXT"
-	NotNull   bool    // true if NOT NULL, false if nullable
-	Default   *string // optional default value
-	IsPrimary bool    // true if PRIMARY KEY
-	IsUnique  bool    // true if UNIQUE
-	Comment   *string // optional comment
-}
-
-type TableType struct {
-	Name  []byte
-	Field []Field
-}
-
-type EnumType struct {
-	Name   []byte
-	Values []string
-}
+// type Field struct {
+// 	Name      string  // "description"
+// 	DataType  string  // "TEXT"
+// 	NotNull   bool    // true if NOT NULL, false if nullable
+// 	Default   *string // optional default value
+// 	IsPrimary bool    // true if PRIMARY KEY
+// 	IsUnique  bool    // true if UNIQUE
+// 	Comment   *string // optional comment
+// }
+//
+// type TableType struct {
+// 	Name  []byte
+// 	Field []Field
+// }
+//
+// type EnumType struct {
+// 	Name   []byte
+// 	Values []string
+// }
 
 type SchemaParser struct {
 	Types        []SqlType
@@ -86,7 +86,7 @@ func (p *SchemaParser) parseTable(line string) error {
 
 	field, ok := parseFieldLine(line)
 	if ok && p.CurrentTable != nil {
-		p.CurrentTable.Field = append(p.CurrentTable.Field, *field)
+		p.CurrentTable.Fields = append(p.CurrentTable.Fields, *field)
 	}
 	return nil
 }
@@ -104,7 +104,7 @@ func parseFieldLine(line string) (*Field, bool) {
 	}
 
 	name := strings.Trim(parts[0], `"`)
-	dataType := parts[1]
+	// dataType := parts[1]
 
 	notNull := false
 	isPrimary := false
@@ -130,8 +130,8 @@ func parseFieldLine(line string) (*Field, bool) {
 	}
 
 	return &Field{
-		Name:      name,
-		DataType:  dataType,
+		Name: name,
+		// DataType:  dataType,
 		NotNull:   notNull,
 		Default:   defaultVal,
 		IsPrimary: isPrimary,

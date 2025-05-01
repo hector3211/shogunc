@@ -2,7 +2,6 @@ package sqlparser
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -304,7 +303,7 @@ func (a *Ast) parseTable() error {
 	}
 
 	if a.currentToken.Type != STRING {
-		return fmt.Errorf("[PARSER_TABLE] unexpected token: %s", a.currentToken.Literal)
+		return fmt.Errorf("[PARSER_TABLE] unexpected token: %s wanted STRING", a.currentToken.Literal)
 	}
 	stmt.Name = []byte(a.currentToken.Literal)
 	a.NextToken()
@@ -313,7 +312,7 @@ func (a *Ast) parseTable() error {
 	for a.currentToken.Type != RPAREN {
 		var field Field
 		if a.currentToken.Type != STRING {
-			return fmt.Errorf("[PARSER_TABLE] unexpected token: %s", a.currentToken.Literal)
+			return fmt.Errorf("[PARSER_TABLE] unexpected token: %s Wanted STRING for VALUES", a.currentToken.Literal)
 		}
 		field.Name = a.currentToken.Literal
 		a.NextToken()
@@ -367,16 +366,16 @@ func (a *Ast) parseTable() error {
 
 func (a *Ast) parseType() error {
 	stmt := &EnumType{}
-	enumFlag := false
 	a.NextToken()
 
 	if a.currentToken.Type != STRING {
-		return fmt.Errorf("unexpected token: %s", a.currentToken.Literal)
+		return fmt.Errorf("unexpected token: %s WANTED STRING", a.currentToken.Literal)
 	}
 	stmt.Name = []byte(a.currentToken.Literal)
+	a.NextToken()
 
-	if a.currentToken.Type == AS && a.peekToken.Type == ENUM {
-		enumFlag = true
+	if a.currentToken.Type != AS && a.peekToken.Type != ENUM {
+		return fmt.Errorf("failed parsing ENUM invalid got: %s", a.currentToken.Literal)
 	}
 	a.NextToken()
 
@@ -385,10 +384,6 @@ func (a *Ast) parseType() error {
 			stmt.Values = append(stmt.Values, a.currentToken.Literal)
 		}
 		a.NextToken()
-	}
-
-	if !enumFlag {
-		return errors.New("failed parsing ENUM invalid")
 	}
 
 	a.Statements = append(a.Statements, stmt)

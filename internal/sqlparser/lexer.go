@@ -106,16 +106,17 @@ func isDigit(ch byte) bool {
 }
 
 func isString(ch byte) bool {
-	return ch == '\''
+	return ch == '\'' || ch == '"'
 }
 
 func (l *Lexer) readString() string {
+	quote := l.ch
 	l.ReadChar() // skip opening '
-	position := l.position
-	for l.ch != '\'' && l.ch != 0 {
+	start := l.position
+	for l.ch != quote && l.ch != 0 {
 		l.ReadChar()
 	}
-	str := l.input[position:l.position]
+	str := l.input[start:l.position]
 	l.ReadChar() // skip closing '
 	return str
 }

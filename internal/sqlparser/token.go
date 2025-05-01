@@ -10,6 +10,7 @@ const (
 	ILLEGAL TokenType = "ILLEGAL"
 	EOF     TokenType = "EOF"
 	STRING  TokenType = "STRING"
+	COMMENT TokenType = "COMMENT"
 
 	// Identifiers + Literals
 	IDENT     TokenType = "IDENT" // foobar

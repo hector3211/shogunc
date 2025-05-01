@@ -26,20 +26,23 @@ func setUpGenerator(t *testing.T) *generate.Generator {
 	return gen
 }
 
-func setUpSchema(t *testing.T) string {
+func setUpSchema(t *testing.T) []byte {
 	t.Helper()
 
-	schema := `CREATE TABLE IF NOT EXISTS "work_orders" (
-  "id" UUID PRIMARY KEY,
-  "created_by" BIGINT NOT NULL,
-  "category" "Work_Category" NOT NULL,
-  "title" VARCHAR NOT NULL,
-  "description" TEXT NOT NULL,
-  "unit_number" SMALLINT NOT NULL,
-  "status" "Status" NOT NULL DEFAULT 'open'
-);
+	configContents, err := os.ReadFile("../../shogunc.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
 
-CREATE TYPE "Account_Status" AS ENUM ('active', 'inactive', 'suspended');`
+	gen := generate.NewGenerator()
+	if err := gen.ParseConfig(configContents); err != nil {
+		t.Fatal(err)
+	}
+
+	schema, err := gen.LoadSchema()
+	if err != nil {
+		t.Fatalf("Error loading sql files: %v", err)
+	}
 
 	return schema
 }
@@ -99,15 +102,16 @@ func TestAstStatementParsing(t *testing.T) {
 }
 
 func TestSchemaParse(t *testing.T) {
-	lexer := NewLexer(setUpSchema(t))
+	lexer := NewLexer(string(setUpSchema(t)))
 	parser := NewAst(lexer)
 	if err := parser.ParseSchema(); err != nil {
-		t.Errorf("parse schema error: %v", err)
+		t.Errorf("[PARSER_TEST] parse schema error: %v", err)
 		return
 	}
 
 	for _, n := range parser.Statements {
 		switch stmt := n.(type) {
+		// TODO: double check this is parsing correctly and failing when it needs to
 		case *TableType:
 			if len(stmt.Name) == 0 {
 				t.Errorf("table has no name: %+v", stmt)

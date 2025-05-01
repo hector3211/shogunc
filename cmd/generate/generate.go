@@ -201,9 +201,9 @@ func (g *Generator) ParseSqlFile(file *os.File) error {
 				queries = append(queries, *current)
 				sqlBuilder.Reset()
 			}
-
 			// Initialize Tag with name & type
 			current = &Query{
+				// TODO: make sure first char is upper cas
 				Name: []byte(matches[1]),
 				Type: Type(matches[2]),
 			}
@@ -232,39 +232,18 @@ func (g *Generator) ParseSqlFile(file *os.File) error {
 	return nil
 }
 
-func (g Generator) LoadSchema() error {
+func (g Generator) LoadSchema() ([]byte, error) {
 	// cwd, err := os.Getwd()
 	// if err != nil {
 	// 	return err
 	// }
 	// directory := filepath.Join(cwd, string(g.QueryPath))
 	// TODO: remove this after testing
-	directory := fmt.Sprintf("../../%s", string(g.SchemaPath))
-	dirEntries, err := os.ReadDir(directory)
+	file := fmt.Sprintf("../../%s", string(g.SchemaPath))
+	fileContents, err := os.ReadFile(file)
 	if err != nil {
-		return err
-	}
-	// fmt.Printf("DIR: %s\n", directory)
-
-	for _, entry := range dirEntries {
-		if entry.IsDir() {
-			continue // Skip directories
-		}
-		if !strings.HasSuffix(entry.Name(), ".sql") {
-			continue
-		}
-
-		fullPath := filepath.Join(directory, entry.Name())
-		file, err := os.Open(fullPath)
-		if err != nil {
-			return fmt.Errorf("failed to open %s: %v", fullPath, err)
-		}
-		defer file.Close()
-
-		if err := g.ParseSqlFile(file); err != nil {
-			return fmt.Errorf("failed to parse %s: %v", fullPath, err)
-		}
+		return nil, err
 	}
 
-	return nil
+	return fileContents, nil
 }

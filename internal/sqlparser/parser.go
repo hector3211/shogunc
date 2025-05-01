@@ -102,7 +102,7 @@ func (a *Ast) NextToken() {
 	a.peekToken = a.l.NextToken()
 }
 
-func (a *Ast) Parse() (Node, error) {
+func (a *Ast) Parse() error {
 	a.NextToken()
 	a.NextToken()
 
@@ -111,20 +111,34 @@ func (a *Ast) Parse() (Node, error) {
 		return a.parseSelect()
 	case INSERT:
 		return a.parserInsert()
-	case CREATE:
-		a.NextToken()
-		if a.currentToken.Type == TABLE {
-			return a.parseTable()
-		} else if a.currentToken.Type == TYPE {
-			return a.parseType()
-		}
-		return nil, fmt.Errorf("unexpected token: %s", a.currentToken.Literal)
 	default:
-		return nil, fmt.Errorf("unexpected token: %s", a.currentToken.Literal)
+		return fmt.Errorf("unexpected token: %s", a.currentToken.Literal)
 	}
 }
 
-func (a *Ast) parseSelect() (*SelectStatement, error) {
+func (a *Ast) ParseSchema() error {
+	a.NextToken()
+	a.NextToken()
+
+	for a.currentToken.Type != EOF {
+		switch a.currentToken.Type {
+		case CREATE:
+			a.NextToken()
+			if a.currentToken.Type == TABLE {
+				return a.parseTable()
+			} else if a.currentToken.Type == TYPE {
+				return a.parseType()
+			}
+			return fmt.Errorf("unexpected token: %s", a.currentToken.Literal)
+		default:
+			return fmt.Errorf("unexpected token: %s", a.currentToken.Literal)
+		}
+	}
+
+	return nil
+}
+
+func (a *Ast) parseSelect() error {
 	stmt := &SelectStatement{}
 	a.NextToken()
 
@@ -139,19 +153,19 @@ func (a *Ast) parseSelect() (*SelectStatement, error) {
 
 	// Parse FROM
 	if a.currentToken.Type != FROM {
-		return nil, fmt.Errorf("expected FROM got %s", a.currentToken.Literal)
+		return fmt.Errorf("expected FROM got %s", a.currentToken.Literal)
 	}
 	a.NextToken()
 
 	if a.currentToken.Type != IDENT {
-		return nil, fmt.Errorf("expected table name got %s", a.currentToken.Literal)
+		return fmt.Errorf("expected table name got %s", a.currentToken.Literal)
 	}
 	stmt.TableName = []byte(a.currentToken.Literal)
 	a.NextToken()
 
 	// Parse WHERE
 	if a.currentToken.Type != WHERE {
-		return nil, fmt.Errorf("expected WHERE got %s", a.currentToken.Literal)
+		return fmt.Errorf("expected WHERE got %s", a.currentToken.Literal)
 	}
 	a.NextToken()
 
@@ -181,7 +195,7 @@ func (a *Ast) parseSelect() (*SelectStatement, error) {
 			a.NextToken()
 			val, err := strconv.Atoi(a.currentToken.Literal)
 			if err != nil {
-				return nil, fmt.Errorf("invalid bind param: %v", err)
+				return fmt.Errorf("invalid bind param: %v", err)
 			}
 			cond.Right = val
 		case STRING:
@@ -189,7 +203,7 @@ func (a *Ast) parseSelect() (*SelectStatement, error) {
 		case INT:
 			val, err := strconv.Atoi(a.currentToken.Literal)
 			if err != nil {
-				return nil, fmt.Errorf("invalid bind param: %v", err)
+				return fmt.Errorf("invalid bind param: %v", err)
 			}
 			cond.Right = val
 		}
@@ -206,7 +220,7 @@ func (a *Ast) parseSelect() (*SelectStatement, error) {
 		if a.currentToken.Type == INT {
 			val, err := strconv.Atoi(a.currentToken.Literal)
 			if err != nil {
-				return nil, fmt.Errorf("invalid bind param: %v", err)
+				return fmt.Errorf("invalid bind param: %v", err)
 			}
 			stmt.Limit = val
 			a.NextToken()
@@ -218,7 +232,7 @@ func (a *Ast) parseSelect() (*SelectStatement, error) {
 		if a.currentToken.Type == INT {
 			val, err := strconv.Atoi(a.currentToken.Literal)
 			if err != nil {
-				return nil, fmt.Errorf("invalid bind param: %v", err)
+				return fmt.Errorf("invalid bind param: %v", err)
 			}
 			stmt.Offset = val
 			a.NextToken()
@@ -227,10 +241,10 @@ func (a *Ast) parseSelect() (*SelectStatement, error) {
 	stmt.Conditions = conditions
 
 	a.Statements = append(a.Statements, stmt)
-	return stmt, nil
+	return nil
 }
 
-func (a *Ast) parserInsert() (*InsertStatement, error) {
+func (a *Ast) parserInsert() error {
 	stmt := &InsertStatement{}
 	a.NextToken()
 
@@ -259,7 +273,7 @@ func (a *Ast) parserInsert() (*InsertStatement, error) {
 					a.NextToken()
 					val, err := strconv.Atoi(a.currentToken.Literal)
 					if err != nil {
-						return nil, fmt.Errorf("invalid bind param: %v", err)
+						return fmt.Errorf("invalid bind param: %v", err)
 					}
 					stmt.Values = append(stmt.Values, val)
 				}
@@ -278,10 +292,11 @@ func (a *Ast) parserInsert() (*InsertStatement, error) {
 		}
 	}
 
-	return stmt, nil
+	a.Statements = append(a.Statements, stmt)
+	return nil
 }
 
-func (a *Ast) parseTable() (*TableType, error) {
+func (a *Ast) parseTable() error {
 	stmt := &TableType{}
 
 	for a.currentToken.Type != STRING {
@@ -289,7 +304,7 @@ func (a *Ast) parseTable() (*TableType, error) {
 	}
 
 	if a.currentToken.Type != STRING {
-		return nil, fmt.Errorf("[PARSER_TABLE] unexpected token: %s", a.currentToken.Literal)
+		return fmt.Errorf("[PARSER_TABLE] unexpected token: %s", a.currentToken.Literal)
 	}
 	stmt.Name = []byte(a.currentToken.Literal)
 	a.NextToken()
@@ -298,7 +313,7 @@ func (a *Ast) parseTable() (*TableType, error) {
 	for a.currentToken.Type != RPAREN {
 		var field Field
 		if a.currentToken.Type != STRING {
-			return nil, fmt.Errorf("[PARSER_TABLE] unexpected token: %s", a.currentToken.Literal)
+			return fmt.Errorf("[PARSER_TABLE] unexpected token: %s", a.currentToken.Literal)
 		}
 		field.Name = a.currentToken.Literal
 		a.NextToken()
@@ -346,16 +361,17 @@ func (a *Ast) parseTable() (*TableType, error) {
 	}
 
 	stmt.Fields = fields
-	return stmt, nil
+	a.Statements = append(a.Statements, stmt)
+	return nil
 }
 
-func (a *Ast) parseType() (*EnumType, error) {
+func (a *Ast) parseType() error {
 	stmt := &EnumType{}
 	enumFlag := false
 	a.NextToken()
 
 	if a.currentToken.Type != STRING {
-		return nil, fmt.Errorf("unexpected token: %s", a.currentToken.Literal)
+		return fmt.Errorf("unexpected token: %s", a.currentToken.Literal)
 	}
 	stmt.Name = []byte(a.currentToken.Literal)
 
@@ -372,10 +388,11 @@ func (a *Ast) parseType() (*EnumType, error) {
 	}
 
 	if !enumFlag {
-		return nil, errors.New("failed parsing ENUM invalid")
+		return errors.New("failed parsing ENUM invalid")
 	}
 
-	return stmt, nil
+	a.Statements = append(a.Statements, stmt)
+	return nil
 }
 
 func (a *Ast) String() string {
@@ -529,12 +546,7 @@ func stringifyTableType(t *TableType) string {
 		}
 		if field.Default != nil {
 			sb.WriteString(" DEFAULT ")
-			// Optional: quote string values
-			if strings.HasPrefix(*field.Default, "'") || strings.HasPrefix(*field.Default, "\"") {
-				sb.WriteString(*field.Default)
-			} else {
-				sb.WriteString(fmt.Sprintf("'%s'", *field.Default))
-			}
+			sb.WriteString(fmt.Sprintf("'%s'", *field.Default))
 		}
 
 		if i < len(t.Fields)-1 {

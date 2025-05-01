@@ -26,6 +26,24 @@ func setUpGenerator(t *testing.T) *generate.Generator {
 	return gen
 }
 
+func setUpSchema(t *testing.T) string {
+	t.Helper()
+
+	schema := `CREATE TABLE IF NOT EXISTS "work_orders" (
+  "id" UUID PRIMARY KEY,
+  "created_by" BIGINT NOT NULL,
+  "category" "Work_Category" NOT NULL,
+  "title" VARCHAR NOT NULL,
+  "description" TEXT NOT NULL,
+  "unit_number" SMALLINT NOT NULL,
+  "status" "Status" NOT NULL DEFAULT 'open'
+);
+
+CREATE TYPE "Account_Status" AS ENUM ('active', 'inactive', 'suspended');`
+
+	return schema
+}
+
 func TestAstLoadTokens(t *testing.T) {
 	gen := setUpGenerator(t)
 
@@ -51,34 +69,59 @@ func TestAstStatementParsing(t *testing.T) {
 			lexer := NewLexer(string(file.SQL))
 			parser := NewAst(lexer)
 
-			node, err := parser.Parse()
+			err := parser.Parse()
 			if err != nil {
 				t.Errorf("parse error: %v", err)
 				return
 			}
-			if node == nil {
-				t.Errorf("parsed node is nil")
-				return
-			}
 
-			switch stmt := node.(type) {
-			case *SelectStatement:
-				t.Logf("SELECT - table: %s, fields: %v", stmt.TableName, stmt.Fields)
-				for _, c := range stmt.Conditions {
-					t.Logf("Condition - Ident: %s, Operator: %s, Value: %v\n", c.Left, c.Operator, c.Right)
+			for _, n := range parser.Statements {
+				switch stmt := n.(type) {
+				case *SelectStatement:
+					t.Logf("SELECT - table: %s, fields: %v", stmt.TableName, stmt.Fields)
+					for _, c := range stmt.Conditions {
+						t.Logf("Condition - Ident: %s, Operator: %s, Value: %v\n", c.Left, c.Operator, c.Right)
+					}
+					t.Logf("LIMIT: %d, OFFSET: %d", stmt.Limit, stmt.Offset)
+
+				case *InsertStatement:
+					t.Logf("INSERT - table: %s, values: %d", stmt.TableName, stmt.Values)
+					for _, col := range stmt.Columns {
+						t.Logf("Column: %s", string(col))
+					}
+
+				default:
+					t.Errorf("unknown AST node type: %T", n)
 				}
-				t.Logf("LIMIT: %d, OFFSET: %d", stmt.Limit, stmt.Offset)
-
-			case *InsertStatement:
-				t.Logf("INSERT - table: %s, values: %d", stmt.TableName, stmt.Values)
-				for _, col := range stmt.Columns {
-					t.Logf("Column: %s", string(col))
-				}
-
-			default:
-				t.Errorf("unknown AST node type: %T", node)
 			}
 		})
+	}
+}
+
+func TestSchemaParse(t *testing.T) {
+	lexer := NewLexer(setUpSchema(t))
+	parser := NewAst(lexer)
+	if err := parser.ParseSchema(); err != nil {
+		t.Errorf("parse schema error: %v", err)
+		return
+	}
+
+	for _, n := range parser.Statements {
+		switch stmt := n.(type) {
+		case *TableType:
+			if len(stmt.Name) == 0 {
+				t.Errorf("table has no name: %+v", stmt)
+			}
+			t.Logf("Parsed table: %s with %d columns", string(stmt.Name), len(stmt.Fields))
+		case *EnumType:
+			if len(stmt.Name) == 0 {
+				t.Errorf("enum has no name: %+v", stmt)
+			}
+			t.Logf("Parsed enum: %s with values %v", string(stmt.Name), stmt.Values)
+
+		default:
+			t.Errorf("unknown statement type: %T", stmt)
+		}
 	}
 }
 
@@ -189,9 +232,6 @@ func TestStringifyInsertStatement(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestParseTable(t *testing.T) {
 }
 
 func TestStringifyTableType(t *testing.T) {

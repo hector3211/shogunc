@@ -82,16 +82,16 @@ func TestAstStatementParsing(t *testing.T) {
 				switch stmt := n.(type) {
 				case *SelectStatement:
 					t.Logf("SELECT - table: %s, fields: %v", stmt.TableName, stmt.Fields)
-					for _, c := range stmt.Conditions {
-						t.Logf("Condition - Ident: %s, Operator: %s, Value: %v\n", c.Left, c.Operator, c.Right)
-					}
+					// for _, c := range stmt.Conditions {
+					// 	t.Logf("Condition - Ident: %s, Operator: %s, Value: %v\n", c.Left, c.Operator, c.Right)
+					// }
 					t.Logf("LIMIT: %d, OFFSET: %d", stmt.Limit, stmt.Offset)
 
 				case *InsertStatement:
 					t.Logf("INSERT - table: %s, values: %d", stmt.TableName, stmt.Values)
-					for _, col := range stmt.Columns {
-						t.Logf("Column: %s", string(col))
-					}
+					// for _, col := range stmt.Columns {
+					// 	t.Logf("Column: %s", string(col))
+					// }
 
 				default:
 					t.Errorf("unknown AST node type: %T", n)
@@ -109,22 +109,52 @@ func TestSchemaParse(t *testing.T) {
 		return
 	}
 
+	if len(parser.Statements) <= 1 {
+		t.Fatalf("[PARSER_TEST] statements, got %d", len(parser.Statements))
+	}
+
+	// Tracking for expected items
+	expectedEnums := map[string]int{
+		"Complaint_Category": 10,
+		"Status":             4,
+		"Type":               5,
+		"Lease_Status":       6,
+		"Compliance_Status":  4,
+		"Work_Category":      5,
+		"Account_Status":     3,
+		"Role":               2,
+	}
+	expectedTables := map[string]int{
+		"parking_permits": 5,
+		"complaints":      9,
+		"work_orders":     9,
+		"users":           12,
+		"apartments":      10,
+		"lockers":         4,
+	}
+
 	for _, n := range parser.Statements {
-		switch stmt := n.(type) {
-		// TODO: double check this is parsing correctly and failing when it needs to
+		switch s := n.(type) {
 		case *TableType:
-			if len(stmt.Name) == 0 {
-				t.Errorf("table has no name: %+v", stmt)
+			name := s.Name
+			if expected, ok := expectedTables[name]; ok {
+				if len(s.Fields) != expected {
+					t.Errorf("table %s: expected %d fields, got %d", name, expected, len(s.Fields))
+				}
 			}
-			t.Logf("Parsed table: %s with %d columns", string(stmt.Name), len(stmt.Fields))
+			// t.Logf("Parsed table: %s (%d columns)", name, len(s.Fields))
+
 		case *EnumType:
-			if len(stmt.Name) == 0 {
-				t.Errorf("enum has no name: %+v", stmt)
+			name := s.Name
+			if expected, ok := expectedEnums[name]; ok {
+				if len(s.Values) != expected {
+					t.Errorf("enum %s: expected %d values, got %d", name, expected, len(s.Values))
+				}
 			}
-			t.Logf("Parsed enum: %s with values %v", string(stmt.Name), stmt.Values)
+			// t.Logf("Parsed enum: %s (%d values)", name, len(s.Values))
 
 		default:
-			t.Errorf("unknown statement type: %T", stmt)
+			t.Errorf("unknown statement type: %T", s)
 		}
 	}
 }
@@ -172,7 +202,7 @@ func TestStringifySelectStatement(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(fmt.Sprintf("SelectStatement(%v)", tt.stmt), func(t *testing.T) {
+		t.Run("SelectStatement", func(t *testing.T) {
 			got := stringifySelectStatement(tt.stmt)
 			if got != tt.want {
 				t.Errorf("stringifySelectStatement() = %v, want %v", got, tt.want)
@@ -229,7 +259,7 @@ func TestStringifyInsertStatement(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(fmt.Sprintf("InsertStatement(%v)", tt.stmt), func(t *testing.T) {
+		t.Run("InsertStatement", func(t *testing.T) {
 			got := stringifyInsertStatement(tt.stmt)
 			if got != tt.want {
 				t.Errorf("got = %v want %v", got, tt.want)
@@ -240,7 +270,7 @@ func TestStringifyInsertStatement(t *testing.T) {
 
 func TestStringifyTableType(t *testing.T) {
 	table := &TableType{
-		Name: []byte("users"),
+		Name: "users",
 		Fields: []Field{
 			{
 				Name:      "id",
@@ -276,7 +306,7 @@ func TestStringifyTableType(t *testing.T) {
 
 func TestStringifyEnumType(t *testing.T) {
 	enum := &EnumType{
-		Name:   []byte("UserStatus"),
+		Name:   "UserStatus",
 		Values: []string{"active", "inactive", "banned"},
 	}
 

@@ -2,6 +2,7 @@ package sqlparser
 
 import (
 	"strings"
+	"time"
 )
 
 type TokenType string
@@ -24,7 +25,7 @@ const (
 	TEXT      TokenType = "TEXT"
 	BOOLEAN   TokenType = "BOOLEAN"
 	TIMESTAMP TokenType = "TIMESTAMP"
-
+	DATE      TokenType = "DATE"
 	// Input Identifier
 	BINDPARAM   TokenType = "$"
 	PLACEHOLDER TokenType = "PLACEHOLDER"
@@ -164,16 +165,7 @@ var keyWords = map[string]TokenType{
 	"ELSE":      ELSE,
 	"END":       END,
 	"RETURNING": RETURNING,
-}
-
-var dbTypes = map[string]TokenType{
-	"INT":       INT,
-	"VARCHAR":   VARCAHR,
-	"TEXT":      TEXT,
-	"BOOLEAN":   BOOLEAN,
-	"TIMESTAMP": TIMESTAMP,
-	"UUID":      UUID,
-	"DECIMAL":   DECIMAL,
+	"DEFAULT":   DEFAULT,
 }
 
 func LookupIdent(ident string) TokenType {
@@ -181,9 +173,6 @@ func LookupIdent(ident string) TokenType {
 		return tok
 	}
 
-	if tok, ok := dbTypes[ident]; ok {
-		return tok
-	}
 	return IDENT
 }
 
@@ -213,9 +202,42 @@ func IsLogicalOperator(op string) bool {
 	}
 }
 
+var dbTypes = map[string]TokenType{
+	"UUID":      UUID,
+	"TEXT":      TEXT,
+	"VARCHAR":   VARCAHR,
+	"INT":       INT,
+	"BIGINT":    BIGINT,
+	"SMALLINT":  SMALLINT,
+	"DECIMAL":   DECIMAL,
+	"BOOLEAN":   BOOLEAN,
+	"TIMESTAMP": TIMESTAMP,
+	"DATE":      DATE,
+}
+
 func IsDatabaseType(t string) bool {
 	if _, ok := dbTypes[t]; ok {
 		return true
 	}
 	return false
+}
+
+func IsNowCompatible(tok Token) bool {
+	switch tok.Literal {
+	case "TIMESTAMP", "TIMESTAMPZ", "DATE", "TIME":
+		return true
+	default:
+		return false
+	}
+}
+
+func SqlNow(tok Token) string {
+	switch tok.Type {
+	case TIMESTAMP:
+		return time.Now().Format("2006-01-02 15:04:05")
+	case DATE:
+		return time.Now().Format("2006-01-02")
+	}
+
+	return time.Now().String()
 }

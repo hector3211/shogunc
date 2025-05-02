@@ -19,12 +19,12 @@ type Field struct {
 }
 
 type TableType struct {
-	Name   []byte
+	Name   string
 	Fields []Field
 }
 
 type EnumType struct {
-	Name   []byte
+	Name   string
 	Values []string
 }
 
@@ -124,11 +124,18 @@ func (a *Ast) ParseSchema() error {
 		case CREATE:
 			a.NextToken()
 			if a.currentToken.Type == TABLE {
-				return a.parseTable()
+				if err := a.parseTable(); err != nil {
+					return err
+				}
+				a.NextToken()
 			} else if a.currentToken.Type == TYPE {
-				return a.parseType()
+				if err := a.parseType(); err != nil {
+					return err
+				}
+				a.NextToken()
 			}
-			return fmt.Errorf("unexpected token: %s", a.currentToken.Literal)
+		case SEMICOLON:
+			a.NextToken()
 		default:
 			return fmt.Errorf("unexpected token: %s", a.currentToken.Literal)
 		}
@@ -298,63 +305,73 @@ func (a *Ast) parserInsert() error {
 func (a *Ast) parseTable() error {
 	stmt := &TableType{}
 
-	for a.currentToken.Type != STRING {
+	for a.currentToken.Type != STRING && a.currentToken.Type != EOF {
 		a.NextToken()
 	}
 
 	if a.currentToken.Type != STRING {
 		return fmt.Errorf("[PARSER_TABLE] unexpected token: %s wanted STRING", a.currentToken.Literal)
 	}
-	stmt.Name = []byte(a.currentToken.Literal)
+	stmt.Name = a.currentToken.Literal
+	a.NextToken()
+
+	if a.currentToken.Type != LPAREN {
+		return fmt.Errorf("[PARSER_TABLE] unexpected token: %s wanted LPAREN", a.currentToken.Literal)
+	}
 	a.NextToken()
 
 	var fields []Field
-	for a.currentToken.Type != RPAREN {
+	for a.currentToken.Type != SEMICOLON {
 		var field Field
-		if a.currentToken.Type != STRING {
-			return fmt.Errorf("[PARSER_TABLE] unexpected token: %s Wanted STRING for VALUES", a.currentToken.Literal)
+		if a.currentToken.Type == STRING {
+			field.Name = a.currentToken.Literal
+			a.NextToken()
 		}
-		field.Name = a.currentToken.Literal
-		a.NextToken()
-		if a.currentToken.Type == IDENT {
-			if IsDatabaseType(a.currentToken.Literal) {
-				// TODO add datatype validation
-				field.DataType = a.currentToken
-				a.NextToken()
-			}
+
+		if a.currentToken.Type == IDENT && IsDatabaseType(a.currentToken.Literal) {
+			// TODO add datatype validation
+			field.DataType = a.currentToken
+			a.NextToken()
 		} else if a.currentToken.Type == STRING {
 			field.DataType = Token{Type: ENUM, Literal: a.currentToken.Literal}
 			a.NextToken()
+		} else {
+			return fmt.Errorf("[PARSER_TABLE] expected datatype (IDENT or STRING), got: %s type: %v", a.currentToken.Literal, a.currentToken.Type)
 		}
 
-		if a.currentToken.Type == PRIMARY && a.peekToken.Type == KEY {
-			field.IsPrimary = true
-			a.NextToken() // consume PRIMARY
-			a.NextToken() // consume KEY
-		}
+		switch a.currentToken.Type {
+		case PRIMARY:
+			if a.peekToken.Type == KEY {
+				field.IsPrimary = true
+				a.NextToken() // consume PRIMARY
+				a.NextToken() // consume KEY
+			}
+		case NOT:
+			if a.peekToken.Type == NULL {
+				field.NotNull = true
+				a.NextToken() // consume NOT
+				a.NextToken() // consume NULL
+			}
 
-		if a.currentToken.Type == NOT && a.peekToken.Type == NULL {
-			field.NotNull = true
-			a.NextToken() // consume NOT
-			a.NextToken() // consume NULL
-		}
-
-		if a.currentToken.Type == UNIQUE {
+		case UNIQUE:
 			field.IsUnique = true
 			a.NextToken()
-		}
-
-		if a.currentToken.Type == DEFAULT {
+		case DEFAULT:
 			a.NextToken()
-			if a.currentToken.Type == STRING && a.peekToken.Type == STRING {
-				// Enum case
+			if IsNowCompatible(field.DataType) && a.currentToken.Type == IDENT && a.peekToken.Type == LPAREN {
+				val := SqlNow(a.currentToken)
+				field.Default = &val
+				a.NextToken() // Consume now
+				a.NextToken() // Consume (
+				a.NextToken() // Consume )
+			} else if a.currentToken.Type == STRING || a.currentToken.Type == INT || a.currentToken.Type == TRUE || a.currentToken.Type == FALSE {
+				val := a.currentToken.Literal
+				field.Default = &val
 				a.NextToken()
-				field.Default = &a.currentToken.Literal
 			} else {
-				field.Default = &a.currentToken.Literal
+				return fmt.Errorf("[PARSER_TABLE] expected datatype (IDENT or STRING V2), got: %s type: %v", a.currentToken.Literal, a.currentToken.Type)
 			}
 		}
-
 		fields = append(fields, field)
 		a.NextToken()
 	}
@@ -371,7 +388,7 @@ func (a *Ast) parseType() error {
 	if a.currentToken.Type != STRING {
 		return fmt.Errorf("unexpected token: %s WANTED STRING", a.currentToken.Literal)
 	}
-	stmt.Name = []byte(a.currentToken.Literal)
+	stmt.Name = a.currentToken.Literal
 	a.NextToken()
 
 	if a.currentToken.Type != AS && a.peekToken.Type != ENUM {

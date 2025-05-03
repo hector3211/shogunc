@@ -321,57 +321,70 @@ func (a *Ast) parseTable() error {
 	a.NextToken()
 
 	var fields []Field
-	for a.currentToken.Type != SEMICOLON {
+	// debug
+	idx := 0
+	for a.currentToken.Type != SEMICOLON && a.currentToken.Type != EOF {
 		var field Field
-		if a.currentToken.Type == STRING {
-			field.Name = a.currentToken.Literal
-			a.NextToken()
+		if a.currentToken.Type != STRING {
+			return fmt.Errorf("[PARSER_TABLE] unexpected token wanted columns name STRING got: %s field_idx: %d", a.currentToken.Literal, idx)
 		}
+		field.Name = a.currentToken.Literal
+		a.NextToken()
 
 		if a.currentToken.Type == IDENT && IsDatabaseType(a.currentToken.Literal) {
 			// TODO add datatype validation
 			field.DataType = a.currentToken
 			a.NextToken()
 		} else if a.currentToken.Type == STRING {
+			// ENUM type
 			field.DataType = Token{Type: ENUM, Literal: a.currentToken.Literal}
 			a.NextToken()
 		} else {
-			return fmt.Errorf("[PARSER_TABLE] expected datatype (IDENT or STRING), got: %s type: %v", a.currentToken.Literal, a.currentToken.Type)
+			return fmt.Errorf("[PARSER_TABLE] expected datatype (IDENT or STRING), got: %s field_idx: %d", a.currentToken.Literal, idx)
 		}
 
-		switch a.currentToken.Type {
-		case PRIMARY:
-			if a.peekToken.Type == KEY {
-				field.IsPrimary = true
-				a.NextToken() // consume PRIMARY
-				a.NextToken() // consume KEY
-			}
-		case NOT:
-			if a.peekToken.Type == NULL {
-				field.NotNull = true
-				a.NextToken() // consume NOT
-				a.NextToken() // consume NULL
-			}
+		for a.currentToken.Type != COMMA && a.currentToken.Type != RPAREN && a.currentToken.Type != EOF {
+			switch a.currentToken.Type {
+			case PRIMARY:
+				if a.peekToken.Type == KEY {
+					field.IsPrimary = true
+					a.NextToken() // consume PRIMARY
+					a.NextToken() // consume KEY
+				} else {
+					return fmt.Errorf("[PARSER_TABLE] expected KEY got: %s field_idx: %d", a.currentToken.Literal, idx)
+				}
+			case NOT:
+				if a.peekToken.Type == NULL {
+					field.NotNull = true
+					a.NextToken() // consume NOT
+					a.NextToken() // consume NULL
+				} else {
+					return fmt.Errorf("[PARSER_TABLE] expected NULL got: %s field_idx: %d", a.currentToken.Literal, idx)
+				}
 
-		case UNIQUE:
-			field.IsUnique = true
-			a.NextToken()
-		case DEFAULT:
-			a.NextToken()
-			if IsNowCompatible(field.DataType) && a.currentToken.Type == IDENT && a.peekToken.Type == LPAREN {
-				val := SqlNow(a.currentToken)
-				field.Default = &val
-				a.NextToken() // Consume now
-				a.NextToken() // Consume (
-				a.NextToken() // Consume )
-			} else if a.currentToken.Type == STRING || a.currentToken.Type == INT || a.currentToken.Type == TRUE || a.currentToken.Type == FALSE {
-				val := a.currentToken.Literal
-				field.Default = &val
+			case UNIQUE:
+				field.IsUnique = true
 				a.NextToken()
-			} else {
-				return fmt.Errorf("[PARSER_TABLE] expected datatype (IDENT or STRING V2), got: %s type: %v", a.currentToken.Literal, a.currentToken.Type)
+			case DEFAULT:
+				a.NextToken()
+				if IsNowCompatible(field.DataType) && a.currentToken.Type == IDENT && a.peekToken.Type == LPAREN {
+					val := SqlNow(a.currentToken)
+					field.Default = &val
+					a.NextToken() // Consume now
+					a.NextToken() // Consume (
+					a.NextToken() // Consume )
+				} else if a.currentToken.Type == STRING || a.currentToken.Type == INT || a.currentToken.Type == TRUE || a.currentToken.Type == FALSE {
+					val := a.currentToken.Literal
+					field.Default = &val
+					a.NextToken()
+				} else {
+					return fmt.Errorf("[PARSER_TABLE] expected literal (STRING, INT, TRUE, FALSE, or now()), got: %s field_idx: %d", a.currentToken.Literal, idx)
+				}
+			default:
+				return fmt.Errorf("[PARSER_TABLE] unexpected token in field definition: %s field_idx: %d", a.currentToken.Literal, idx)
 			}
 		}
+		idx = idx + 1
 		fields = append(fields, field)
 		a.NextToken()
 	}

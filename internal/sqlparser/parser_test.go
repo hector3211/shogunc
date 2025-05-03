@@ -142,7 +142,7 @@ func TestSchemaParse(t *testing.T) {
 					t.Errorf("table %s: expected %d fields, got %d", name, expected, len(s.Fields))
 				}
 			}
-			// t.Logf("Parsed table: %s (%d columns)", name, len(s.Fields))
+			t.Logf("Parsed table: %s (%d columns)", name, len(s.Fields))
 
 		case *EnumType:
 			name := s.Name
@@ -151,7 +151,7 @@ func TestSchemaParse(t *testing.T) {
 					t.Errorf("enum %s: expected %d values, got %d", name, expected, len(s.Values))
 				}
 			}
-			// t.Logf("Parsed enum: %s (%d values)", name, len(s.Values))
+			t.Logf("Parsed enum: %s (%d values)", name, len(s.Values))
 
 		default:
 			t.Errorf("unknown statement type: %T", s)

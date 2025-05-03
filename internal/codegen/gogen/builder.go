@@ -23,6 +23,7 @@ func NewGoFuncGenerator(query generate.Query) *GoFuncGenerator {
 func (f *GoFuncGenerator) GenerateFunction(statement sqlparser.Node) string {
 	f.sb.WriteString(fmt.Sprintf("func %s() {", f.funcName))
 	f.NewLine()
+	f.Tab()
 	switch stmt := statement.(type) {
 	case *sqlparser.SelectStatement:
 		f.sb.WriteString(GenerateSelectFunction(f.tagType, stmt))
@@ -33,6 +34,10 @@ func (f *GoFuncGenerator) GenerateFunction(statement sqlparser.Node) string {
 	f.sb.WriteString("}")
 
 	return f.sb.String()
+}
+
+func (f *GoFuncGenerator) Tab() {
+	f.sb.WriteString("\t")
 }
 
 func (f *GoFuncGenerator) NewLine() {

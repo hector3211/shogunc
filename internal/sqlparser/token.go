@@ -5,6 +5,37 @@ import (
 	"time"
 )
 
+type LogicalOp string
+
+const (
+	And     LogicalOp = "And"
+	Or      LogicalOp = "Or"
+	Illegal LogicalOp = ""
+)
+
+func toLogicOp(op string) LogicalOp {
+	switch op {
+	case "AND":
+		return And
+	case "OR":
+		return Or
+	default:
+		return Illegal
+	}
+}
+
+type ConditionOp string
+
+const (
+	EQUAL       ConditionOp = "="
+	NOTEQUAL    ConditionOp = "!="
+	LESSTHAN    ConditionOp = "<"
+	GREATERTHAN ConditionOp = ">"
+	BETWEEN     ConditionOp = "BETWEEN"
+	ISNULL      ConditionOp = "IS NULL"
+	NOTNULL     ConditionOp = "IS NOT NULL"
+)
+
 type TokenType string
 
 const (

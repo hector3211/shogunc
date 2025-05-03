@@ -48,7 +48,7 @@ CREATE TYPE "Work_Category" AS ENUM (
 CREATE TABLE IF NOT EXISTS "parking_permits" (
     "id"            UUID PRIMARY KEY,
     "permit_number" BIGINT NOT NULL,
-    "created_by"    BIGINT NOT NULL,
+    "created_by"    SMALLINT NOT NULL,
     "updated_at"    TIMESTAMP DEFAULT now(),
     "expires_at"    TIMESTAMP NOT NULL
 );

@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestGenerateQueryOne_SimpleSelect(t *testing.T) {
+func TestGenerateQuerySimpleSelect(t *testing.T) {
 	query := generate.Query{
 		Name: []byte("GetUser"),
 		Type: "one",
@@ -36,7 +36,7 @@ query := Select(id,name).From(users).Where(Equal(name, 'john')).Build()
 	}
 }
 
-func TestGenerateQueryOne_WithLogicalOps(t *testing.T) {
+func TestGenerateQueryWithLogicalOps(t *testing.T) {
 	query := generate.Query{
 		Name: []byte("GetUser"),
 		Type: "one",
@@ -71,7 +71,7 @@ query := Select(id,name).From(users).Where(And(),Equal(name, 'john'),GreaterThan
 	}
 }
 
-func TestGenerateQueryOne_SelectAll(t *testing.T) {
+func TestGenerateQuerySelectAll(t *testing.T) {
 	query := generate.Query{
 		Name: []byte("GetProducts"),
 		Type: "one",

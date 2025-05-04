@@ -20,26 +20,26 @@ func NewGoFuncGenerator(query generate.Query) *GoFuncGenerator {
 	}
 }
 
-func (f *GoFuncGenerator) GenerateFunction(statement sqlparser.Node) string {
-	f.sb.WriteString(fmt.Sprintf("func %s() {", f.funcName))
-	f.NewLine()
-	f.Tab()
+func (g *GoFuncGenerator) GenerateFunction(statement sqlparser.Node) string {
+	g.sb.WriteString(fmt.Sprintf("func %s() {", g.funcName))
+	g.NewLine()
+	// f.Tab()
 	switch stmt := statement.(type) {
 	case *sqlparser.SelectStatement:
-		f.sb.WriteString(GenerateSelectFunction(f.tagType, stmt))
+		g.sb.WriteString(GenerateSelectFunction(g.tagType, stmt))
 	default:
-		f.sb.WriteString("Failed parsing statement")
+		g.sb.WriteString("Failed parsing statement")
 	}
-	f.NewLine()
-	f.sb.WriteString("}")
+	g.NewLine()
+	g.sb.WriteString("}")
 
-	return f.sb.String()
+	return g.sb.String()
 }
 
-func (f *GoFuncGenerator) Tab() {
-	f.sb.WriteString("\t")
+func (g *GoFuncGenerator) Tab() {
+	g.sb.WriteString("\t")
 }
 
-func (f *GoFuncGenerator) NewLine() {
-	f.sb.WriteString("\n")
+func (g *GoFuncGenerator) NewLine() {
+	g.sb.WriteString("\n")
 }

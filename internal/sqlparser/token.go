@@ -52,7 +52,7 @@ const (
 	BIGINT    TokenType = "BIGINT"
 	SMALLINT  TokenType = "SMALLINT"
 	DECIMAL   TokenType = "DECIMAL"
-	VARCAHR   TokenType = "VARCAHR"
+	VARCHAR   TokenType = "VARCAHR"
 	TEXT      TokenType = "TEXT"
 	BOOLEAN   TokenType = "BOOLEAN"
 	TIMESTAMP TokenType = "TIMESTAMP"
@@ -236,7 +236,7 @@ func IsLogicalOperator(op string) bool {
 var dbTypes = map[string]TokenType{
 	"UUID":      UUID,
 	"TEXT":      TEXT,
-	"VARCHAR":   VARCAHR,
+	"VARCHAR":   VARCHAR,
 	"INT":       INT,
 	"BIGINT":    BIGINT,
 	"SMALLINT":  SMALLINT,

@@ -5,6 +5,7 @@ import (
 	"os"
 	"shogunc/cmd/generate"
 	"testing"
+	"time"
 )
 
 func setUpGenerator(t *testing.T) *generate.Generator {
@@ -139,10 +140,10 @@ func TestSchemaParse(t *testing.T) {
 			name := s.Name
 			if expected, ok := expectedTables[name]; ok {
 				if len(s.Fields) != expected {
-					t.Errorf("table %s: expected %d fields, got %d", name, expected, len(s.Fields))
+					t.Errorf("table %s: expected %d fields, got %d\n", name, expected, len(s.Fields))
 				}
 			}
-			t.Logf("Parsed table: %s (%d columns)", name, len(s.Fields))
+			t.Logf("Parsed table: %s (%d columns)\n", name, len(s.Fields))
 
 		case *EnumType:
 			name := s.Name
@@ -155,6 +156,153 @@ func TestSchemaParse(t *testing.T) {
 
 		default:
 			t.Errorf("unknown statement type: %T", s)
+		}
+	}
+}
+
+func TestSchemaTypes(t *testing.T) {
+	lexer := NewLexer(string(setUpSchema(t)))
+	parser := NewAst(lexer)
+	if err := parser.ParseSchema(); err != nil {
+		t.Errorf("[PARSER_TEST] parse schema error: %v", err)
+		return
+	}
+
+	if len(parser.Statements) <= 1 {
+		t.Fatalf("[PARSER_TEST] statements, got %d", len(parser.Statements))
+	}
+
+	nowOne := time.Now().Format("2006-01-02 15:04:05")
+	inUseFalse := fmt.Sprintf("%v", false)
+	expectedTypes := map[string][]Field{
+		"parking_permits": {
+			{
+				Name: "id",
+				DataType: Token{
+					Type:    IDENT,
+					Literal: "UUID",
+				},
+				NotNull:   true,
+				Default:   nil,
+				IsPrimary: true,
+				IsUnique:  false,
+			},
+			{
+				Name: "permit_number",
+				DataType: Token{
+					Type:    IDENT,
+					Literal: "BIGINT",
+				},
+				NotNull:   true,
+				Default:   nil,
+				IsPrimary: false,
+				IsUnique:  false,
+			},
+			{
+				Name: "created_by",
+				DataType: Token{
+					Type:    IDENT,
+					Literal: "SMALLINT",
+				},
+				NotNull:   true,
+				Default:   nil,
+				IsPrimary: false,
+				IsUnique:  false,
+			},
+			{
+				Name: "updated_at",
+				DataType: Token{
+					Type:    IDENT,
+					Literal: "TIMESTAMP",
+				},
+				NotNull:   false,
+				Default:   &nowOne,
+				IsPrimary: false,
+				IsUnique:  false,
+			},
+			{
+				Name: "expires_at",
+				DataType: Token{
+					Type:    IDENT,
+					Literal: "TIMESTAMP",
+				},
+				NotNull:   true,
+				Default:   nil,
+				IsPrimary: false,
+				IsUnique:  false,
+			},
+		},
+		"lockers": {
+			{
+				Name: "id",
+				DataType: Token{
+					Type:    IDENT,
+					Literal: "UUID",
+				},
+				NotNull:   false,
+				Default:   nil,
+				IsPrimary: true,
+				IsUnique:  false,
+			},
+			{
+				Name: "access_code",
+				DataType: Token{
+					Type:    IDENT,
+					Literal: "VARCHAR",
+				},
+				NotNull:   false,
+				Default:   nil,
+				IsPrimary: false,
+				IsUnique:  false,
+			},
+			{
+				Name: "in_use",
+				DataType: Token{
+					Type:    IDENT,
+					Literal: "BOOLEAN",
+				},
+				NotNull:   true,
+				Default:   &inUseFalse,
+				IsPrimary: false,
+				IsUnique:  false,
+			},
+			{
+				Name: "user_id",
+				DataType: Token{
+					Type:    IDENT,
+					Literal: "BIGINT",
+				},
+				NotNull:   false,
+				Default:   nil,
+				IsPrimary: false,
+				IsUnique:  false,
+			},
+		},
+	}
+
+	for _, n := range parser.Statements {
+		switch s := n.(type) {
+		case *TableType:
+			name := s.Name
+			fields, ok := expectedTypes[name]
+			if !ok {
+				t.Errorf("unexpected table name: %s", name)
+				continue
+			}
+
+			if len(fields) != len(s.Fields) {
+				t.Errorf("table %s: expected %d fields, got %d", name, len(fields), len(s.Fields))
+				continue
+			}
+
+			for idx, f := range s.Fields {
+				if fields[idx].Name != f.Name {
+					t.Errorf("table %s: expected field name '%s', got '%s'", name, fields[idx].Name, f.Name)
+				}
+				if fields[idx].DataType != f.DataType {
+					t.Errorf("table %s: expected field '%s' type %v, got type %v", name, fields[idx].Name, fields[idx].DataType, f.DataType)
+				}
+			}
 		}
 	}
 }

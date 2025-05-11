@@ -6,6 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"shogunc/internal/codegen/gogen"
+	"shogunc/internal/sqlparser"
+	"shogunc/utils"
 	"strings"
 )
 
@@ -16,33 +19,28 @@ const (
 	POSTGRES Driver = "postgres"
 )
 
-type Type string
-
-const (
-	EXEC Type = "exec"
-	ONE  Type = "one"
-	MANY Type = "many"
-)
-
-type Query struct {
-	Name []byte
-	Type Type
-	SQL  []byte
+type QueryBlock struct {
+	Name     string
+	Type     utils.Type
+	SQL      string
+	Filename string // for debug or error reporting
 }
 
 type Generator struct {
 	QueryPath  []byte
-	Queries    []Query
 	SchemaPath []byte
 	Driver     Driver
+	Types      []string
+	Imports    []string
 }
 
 func NewGenerator() *Generator {
 	return &Generator{
 		QueryPath:  []byte{},
-		Queries:    []Query{},
 		SchemaPath: []byte{},
 		Driver:     "",
+		Types:      []string{},
+		Imports:    []string{},
 	}
 }
 
@@ -53,6 +51,25 @@ func (g *Generator) Execute() error {
 		return err
 	}
 
+	return nil
+}
+
+func (g *Generator) LoadConfig() error {
+	if !g.HasConfig() {
+		return fmt.Errorf("shogunc config file does not exists")
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
+	configFile, err := os.ReadFile(fmt.Sprintf("%s/shogunc.yml", cwd))
+	if err != nil {
+		return err
+	}
+
+	g.ParseConfig(configFile)
 	return nil
 }
 
@@ -73,6 +90,7 @@ func (g Generator) HasConfig() bool {
 // queries
 // driver
 func (g *Generator) ParseConfig(fileContents []byte) error {
+	// NOTE: Go has yaml parser package
 	lines := strings.Split(string(fileContents), "\n")
 	matchers := map[string]struct{}{
 		"queries": {},
@@ -122,25 +140,6 @@ func (g *Generator) ParseConfig(fileContents []byte) error {
 	return nil
 }
 
-func (g *Generator) LoadConfig() error {
-	if !g.HasConfig() {
-		return fmt.Errorf("shogunc config file does not exists")
-	}
-
-	cwd, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-
-	configFile, err := os.ReadFile(fmt.Sprintf("%s/shogunc.yml", cwd))
-	if err != nil {
-		return err
-	}
-
-	g.ParseConfig(configFile)
-	return nil
-}
-
 // Read sql file / files
 // Look for special tag: --name: GetUserById :one
 func (g *Generator) LoadSqlFiles() error {
@@ -149,8 +148,7 @@ func (g *Generator) LoadSqlFiles() error {
 	// 	return err
 	// }
 	// directory := filepath.Join(cwd, string(g.QueryPath))
-	// TODO: remove this after testing
-	directory := fmt.Sprintf("../../%s", string(g.QueryPath))
+	directory := fmt.Sprintf("../../%s", string(g.QueryPath)) // TODO: remove this after testing
 	dirEntries, err := os.ReadDir(directory)
 	if err != nil {
 		return err
@@ -172,42 +170,61 @@ func (g *Generator) LoadSqlFiles() error {
 		}
 		defer file.Close()
 
-		if err := g.ParseSqlFile(file); err != nil {
+		_, err = g.ParseSqlFile(file)
+		if err != nil {
 			return fmt.Errorf("failed to parse %s: %v", fullPath, err)
 		}
 	}
-
-	// g.listSqlQueries()
-
 	return nil
 }
 
-func (g *Generator) ParseSqlFile(file *os.File) error {
-	var queries []Query
-	scanner := bufio.NewScanner(file)
+func (g *Generator) ParseSqlFile(file *os.File) (string, error) {
+	var bytes strings.Builder
+	queryBlocks, err := extractSqlBlocks(file, file.Name())
+	if err != nil {
+		return "", err
+	}
 
-	// Shogunc Tag: -- name: GetUserById :one
-	tagReg := regexp.MustCompile(`--\s*name:\s*(\w+)\s*:(\w+)`)
-	var current *Query
+	for _, qb := range queryBlocks {
+		lexer := sqlparser.NewLexer(qb.SQL)
+		ast := sqlparser.NewAst(lexer)
+		if err := ast.Parse(); err != nil {
+			return "", fmt.Errorf("failed parsing %s: %w", qb.Name, err)
+		}
+
+		funcGen := gogen.NewGoFuncGenerator([]byte(qb.Name), qb.Type)
+		for _, stmt := range ast.Statements {
+			code := funcGen.GenerateFunction(stmt)
+			bytes.WriteString(code)
+			bytes.WriteString("\n")
+		}
+	}
+	return bytes.String(), nil
+}
+
+func extractSqlBlocks(file *os.File, fileName string) ([]QueryBlock, error) {
+	scanner := bufio.NewScanner(file)
+	tagReg := regexp.MustCompile(`--\s*name:\s*(\w+)\s*:(\w+)`) // -- name: GetUserById :one
+	var blocks []QueryBlock
+
+	var current *QueryBlock
 	var sqlBuilder strings.Builder
 
 	for scanner.Scan() {
 		line := scanner.Text()
-
 		// Match on shogunc tag
 		if matches := tagReg.FindStringSubmatch(line); matches != nil {
 			if current != nil {
-				current.SQL = []byte(strings.TrimSpace(sqlBuilder.String()))
-				queries = append(queries, *current)
+				current.SQL = sqlBuilder.String()
+				blocks = append(blocks, *current)
 				sqlBuilder.Reset()
 			}
 			// Initialize Tag with name & type
-			current = &Query{
-				// TODO: make sure first char is upper cas
-				Name: []byte(matches[1]),
-				Type: Type(matches[2]),
+			current = &QueryBlock{
+				Name:     strings.ToUpper(matches[1][:1]) + matches[1][1:],
+				Type:     utils.Type(matches[2]),
+				Filename: fileName,
 			}
-			// Jump to next line (SQL statement)
 			continue
 		}
 
@@ -219,17 +236,15 @@ func (g *Generator) ParseSqlFile(file *os.File) error {
 
 	// Last SQL statement
 	if current != nil {
-		current.SQL = []byte(strings.TrimSpace(sqlBuilder.String()))
-		queries = append(queries, *current)
+		current.SQL = sqlBuilder.String()
+		blocks = append(blocks, *current)
 	}
 
 	if err := scanner.Err(); err != nil {
-		return err
+		return nil, err
 	}
 
-	g.Queries = append(g.Queries, queries...)
-
-	return nil
+	return blocks, nil
 }
 
 func (g Generator) LoadSchema() ([]byte, error) {

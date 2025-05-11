@@ -17,14 +17,14 @@ type Condition struct {
 type SelectStatement struct {
 	Fields     []string
 	Conditions []Condition
-	TableName  []byte
+	TableName  string
 	Distinct   bool
 	Limit      int
 	Offset     int
 }
 
 type InsertStatement struct {
-	TableName       []byte
+	TableName       string
 	Columns         [][]byte
 	Values          []int
 	ReturningFields [][]byte
@@ -67,13 +67,13 @@ func (a *Ast) parseSelect() error {
 	if a.currentToken.Type != IDENT {
 		return fmt.Errorf("expected table name got %s", a.currentToken.Literal)
 	}
-	stmt.TableName = []byte(a.currentToken.Literal)
+	stmt.TableName = strings.ToLower(a.currentToken.Literal)
 	a.NextToken()
 
 	// Parse WHERE
-	if a.currentToken.Type != WHERE {
-		return fmt.Errorf("expected WHERE got %s", a.currentToken.Literal)
-	}
+	// if a.currentToken.Type != WHERE {
+	// 	return fmt.Errorf("expected WHERE got %s", a.currentToken.Literal)
+	// }
 	a.NextToken()
 
 	var conditions []Condition
@@ -158,7 +158,7 @@ func (a *Ast) parseInsert() error {
 	// Parse Insert
 	for a.currentToken.Type != VALUES && a.currentToken.Type != EOF {
 		if a.currentToken.Type == IDENT {
-			stmt.TableName = []byte(a.currentToken.Literal)
+			stmt.TableName = a.currentToken.Literal
 		}
 		if a.currentToken.Type == LPAREN {
 			for a.currentToken.Type != RPAREN {

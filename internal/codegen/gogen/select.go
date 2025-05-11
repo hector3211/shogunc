@@ -2,25 +2,25 @@ package gogen
 
 import (
 	"fmt"
-	"shogunc/cmd/generate"
 	"shogunc/internal/sqlparser"
+	"shogunc/utils"
 	"strings"
 )
 
-func GenerateSelectFunction(tagType generate.Type, query *sqlparser.SelectStatement) string {
+func generateSelectFunction(tagType utils.Type, query *sqlparser.SelectStatement) string {
 	switch tagType {
-	case generate.ONE:
-		return GenerateSelectOne(query)
-	case generate.MANY:
+	case utils.ONE:
+		return generateSelectOne(query)
+	case utils.MANY:
 		return ""
-	case generate.EXEC:
+	case utils.EXEC:
 		return ""
 	default:
 		return ""
 	}
 }
 
-func GenerateSelectOne(query *sqlparser.SelectStatement) string {
+func generateSelectOne(query *sqlparser.SelectStatement) string {
 	var sb strings.Builder
 	sb.WriteString("query := ")
 

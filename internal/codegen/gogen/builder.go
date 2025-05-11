@@ -1,45 +1,61 @@
 package gogen
 
 import (
+	"bytes"
 	"fmt"
-	"shogunc/cmd/generate"
 	"shogunc/internal/sqlparser"
-	"strings"
+	"shogunc/utils"
 )
 
-type GoFuncGenerator struct {
-	funcName []byte
-	tagType  generate.Type
-	sb       strings.Builder
+type Type string
+
+const (
+	EXEC Type = "exec"
+	ONE  Type = "one"
+	MANY Type = "many"
+)
+
+type TagType struct {
+	Name []byte
+	Type Type
 }
 
-func NewGoFuncGenerator(query generate.Query) *GoFuncGenerator {
+type GoFuncGenerator struct {
+	Name       []byte
+	tagType    utils.Type
+	ReturnType []byte
+}
+
+func NewGoFuncGenerator(statementName []byte, statementTag utils.Type) *GoFuncGenerator {
 	return &GoFuncGenerator{
-		funcName: query.Name,
-		tagType:  query.Type,
+		Name:       statementName,
+		tagType:    statementTag,
+		ReturnType: []byte{},
 	}
 }
 
 func (g *GoFuncGenerator) GenerateFunction(statement sqlparser.Node) string {
-	g.sb.WriteString(fmt.Sprintf("func %s() {", g.funcName))
+	var sb bytes.Buffer
+	sb.WriteString(fmt.Sprintf("func %s() {\n", g.Name))
 	g.NewLine()
 	// f.Tab()
 	switch stmt := statement.(type) {
 	case *sqlparser.SelectStatement:
-		g.sb.WriteString(GenerateSelectFunction(g.tagType, stmt))
+		sb.WriteString(generateSelectFunction(g.tagType, stmt))
 	default:
-		g.sb.WriteString("Failed parsing statement")
+		sb.WriteString("Failed parsing statement")
 	}
-	g.NewLine()
-	g.sb.WriteString("}")
+	sb.WriteString(g.NewLine())
+	sb.WriteString("}")
 
-	return g.sb.String()
+	// return sb.Bytes()
+	return sb.String()
 }
 
-func (g *GoFuncGenerator) Tab() {
-	g.sb.WriteString("\t")
+func (g *GoFuncGenerator) Tab() string {
+	return "\t"
 }
 
-func (g *GoFuncGenerator) NewLine() {
-	g.sb.WriteString("\n")
+func (g *GoFuncGenerator) NewLine() string {
+	return "\n"
 }

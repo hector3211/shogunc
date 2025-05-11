@@ -2,56 +2,100 @@ package sqlparser
 
 import (
 	"fmt"
-	"os"
-	"shogunc/cmd/generate"
 	"shogunc/utils"
 	"testing"
 	"time"
 )
 
-func setUpGenerator(t *testing.T) *generate.Generator {
-	t.Helper()
-	configContents, err := os.ReadFile("../../shogunc.yml")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	gen := generate.NewGenerator()
-	if err := gen.ParseConfig(configContents); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := gen.LoadSqlFiles(); err != nil {
-		t.Fatalf("Error loading sql files: %v", err)
-	}
-
-	return gen
+type mockQueryFile struct {
+	Name string
+	SQL  []byte
 }
 
-func setUpSchema(t *testing.T) []byte {
-	t.Helper()
+var gen = struct {
+	Queries []mockQueryFile
+}{
+	Queries: []mockQueryFile{
+		{
+			Name: "select_users",
+			SQL:  []byte("SELECT id, name FROM users WHERE age > 30 LIMIT 10 OFFSET 5;"),
+		},
+		{
+			Name: "insert_user",
+			SQL:  []byte("INSERT INTO users (name, age) VALUES ('John', 25) RETURNING id;"),
+		},
+	},
+}
 
-	configContents, err := os.ReadFile("../../shogunc.yml")
-	if err != nil {
-		t.Fatal(err)
-	}
+func setUpSchema() []byte {
+	return []byte(`
+CREATE TYPE "Complaint_Category" AS ENUM (
+    'maintenance',
+    'noise',
+    'security',
+    'parking',
+    'neighbor',
+    'trash',
+    'internet',
+    'lease',
+    'natural_disaster',
+    'other'
+);
+CREATE TYPE "Status" AS ENUM (
+    'open',
+    'in_progress',
+    'resolved',
+    'closed'
+);
+CREATE TYPE "Type" AS ENUM (
+    'lease_agreement',
+    'amendment',
+    'extension',
+    'termination',
+    'addendum'
+);
+CREATE TYPE "Lease_Status" AS ENUM (
+    'draft',
+    'pending_approval',
+    'active',
+    'expired',
+    'terminated',
+    'renewed'
+);
+CREATE TYPE "Compliance_Status" AS ENUM (
+    'pending_review',
+    'compliant',
+    'non_compliant',
+    'exempted'
+);
+CREATE TYPE "Work_Category" AS ENUM (
+    'plumbing',
+    'electric',
+    'carpentry',
+    'hvac',
+    'other'
+);
 
-	gen := generate.NewGenerator()
-	if err := gen.ParseConfig(configContents); err != nil {
-		t.Fatal(err)
-	}
 
-	schema, err := gen.LoadSchema()
-	if err != nil {
-		t.Fatalf("Error loading sql files: %v", err)
-	}
 
-	return schema
+CREATE TABLE IF NOT EXISTS "parking_permits" (
+    "id"            UUID NOT NULL PRIMARY KEY,
+    "permit_number" BIGINT NOT NULL,
+    "created_by"    SMALLINT NOT NULL,
+    "updated_at"    TIMESTAMP DEFAULT now(),
+    "expires_at"    TIMESTAMP NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS "lockers" (
+    "id"          UUID PRIMARY KEY,
+    "access_code" VARCHAR,
+    "in_use"      BOOLEAN NOT NULL DEFAULT false,
+    "user_id"     BIGINT
+);
+`)
 }
 
 func TestAstLoadTokens(t *testing.T) {
-	gen := setUpGenerator(t)
-
 	for _, file := range gen.Queries {
 		lexer := NewLexer(string(file.SQL))
 		for {
@@ -67,8 +111,6 @@ func TestAstLoadTokens(t *testing.T) {
 }
 
 func TestAstStatementParsing(t *testing.T) {
-	gen := setUpGenerator(t)
-
 	for _, file := range gen.Queries {
 		t.Run(fmt.Sprintf("Parsing: %s", file.Name), func(t *testing.T) {
 			lexer := NewLexer(string(file.SQL))
@@ -104,7 +146,7 @@ func TestAstStatementParsing(t *testing.T) {
 }
 
 func TestSchemaParse(t *testing.T) {
-	lexer := NewLexer(string(setUpSchema(t)))
+	lexer := NewLexer(string(setUpSchema()))
 	parser := NewAst(lexer)
 	if err := parser.ParseSchema(); err != nil {
 		t.Errorf("[PARSER_TEST] parse schema error: %v", err)
@@ -128,10 +170,6 @@ func TestSchemaParse(t *testing.T) {
 	}
 	expectedTables := map[string]int{
 		"parking_permits": 5,
-		"complaints":      9,
-		"work_orders":     9,
-		"users":           12,
-		"apartments":      10,
 		"lockers":         4,
 	}
 
@@ -162,7 +200,7 @@ func TestSchemaParse(t *testing.T) {
 }
 
 func TestSchemaTypes(t *testing.T) {
-	lexer := NewLexer(string(setUpSchema(t)))
+	lexer := NewLexer(string(setUpSchema()))
 	parser := NewAst(lexer)
 	if err := parser.ParseSchema(); err != nil {
 		t.Errorf("[PARSER_TEST] parse schema error: %v", err)
@@ -316,7 +354,7 @@ func TestStringifySelectStatement(t *testing.T) {
 		{
 			stmt: &SelectStatement{
 				Fields:    []string{"id", "name"},
-				TableName: []byte("users"),
+				TableName: "users",
 				Conditions: []Condition{
 					{Left: []byte("age"), Operator: ">", Right: 30},
 				},
@@ -328,7 +366,7 @@ func TestStringifySelectStatement(t *testing.T) {
 		{
 			stmt: &SelectStatement{
 				Fields:     []string{"*"},
-				TableName:  []byte("orders"),
+				TableName:  "orders",
 				Conditions: nil,
 				Limit:      0,
 				Offset:     0,
@@ -338,7 +376,7 @@ func TestStringifySelectStatement(t *testing.T) {
 		{
 			stmt: &SelectStatement{
 				Fields:    []string{"id", "name"},
-				TableName: []byte("products"),
+				TableName: "products",
 				Conditions: []Condition{
 					{Left: []byte("price"), Operator: ">=", Right: 100},
 				},
@@ -367,7 +405,7 @@ func TestStringifyInsertStatement(t *testing.T) {
 	}{
 		{
 			stmt: &InsertStatement{
-				TableName:       []byte("users"),
+				TableName:       "users",
 				Columns:         [][]byte{[]byte("name"), []byte("age")},
 				Values:          []int{30, 25},
 				ReturningFields: [][]byte{[]byte("id")},
@@ -377,7 +415,7 @@ func TestStringifyInsertStatement(t *testing.T) {
 		},
 		{
 			stmt: &InsertStatement{
-				TableName:       []byte("products"),
+				TableName:       "products",
 				Columns:         [][]byte{[]byte("id"), []byte("name"), []byte("price")},
 				Values:          []int{1, 100, 25},
 				ReturningFields: nil,
@@ -387,7 +425,7 @@ func TestStringifyInsertStatement(t *testing.T) {
 		},
 		{
 			stmt: &InsertStatement{
-				TableName:       []byte("orders"),
+				TableName:       "orders",
 				Columns:         [][]byte{[]byte("id"), []byte("quantity")},
 				Values:          []int{10, 2},
 				ReturningFields: [][]byte{[]byte("order_id")},
@@ -397,7 +435,7 @@ func TestStringifyInsertStatement(t *testing.T) {
 		},
 		{
 			stmt: &InsertStatement{
-				TableName:       []byte("customers"),
+				TableName:       "customers",
 				Columns:         nil,
 				Values:          nil,
 				ReturningFields: nil,

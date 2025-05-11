@@ -272,3 +272,22 @@ func SqlNow(tok Token) string {
 
 	return time.Now().String()
 }
+
+func SqlToGoType(tok Token) string {
+	switch tok.Type {
+	case TEXT, VARCHAR, UUID:
+		return "string"
+	case INT, BIGINT, SMALLINT:
+		return "int"
+	case DECIMAL:
+		return "float64"
+	case BOOLEAN:
+		return "bool"
+	case TIMESTAMP, DATE:
+		return "time.Time"
+	case ENUM:
+		return tok.Literal
+	default:
+		return ""
+	}
+}

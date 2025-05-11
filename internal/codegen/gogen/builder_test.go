@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"shogunc/cmd/generate"
 	"shogunc/internal/sqlparser"
+	"shogunc/utils"
 	"testing"
 )
 
@@ -97,5 +98,71 @@ query := Select('*').From(products).Where(LessThan(price, 100)).Build()
 
 	if got != want {
 		t.Errorf("expected:\n%s\ngot:\n%s", want, got)
+	}
+}
+
+func TestTableTypeGenerator(t *testing.T) {
+	table := &sqlparser.TableType{
+		Name: "Users",
+		Fields: []sqlparser.Field{
+			{
+				Name:      "id",
+				DataType:  sqlparser.Token{Type: sqlparser.UUID, Literal: "UUID"},
+				IsPrimary: true,
+				NotNull:   true,
+			},
+			{
+				Name:     "email",
+				DataType: sqlparser.Token{Type: sqlparser.TEXT, Literal: "TEXT"},
+				NotNull:  true,
+				IsUnique: true,
+			},
+			{
+				Name:     "status",
+				DataType: sqlparser.Token{Type: sqlparser.ENUM, Literal: "UserStatus"},
+				Default:  utils.StrPtr("active"),
+			},
+		},
+	}
+
+	got, err := GenerateTableType(*table)
+	if err != nil {
+		t.Fatalf("generating table type failed: %v", err)
+	}
+
+	want := `type Users struct {
+	Id string ` + "`json:\"id\"`" + `
+	Email string ` + "`json:\"email\"`" + `
+	Status *UserStatus ` + "`json:\"status\"`" + `
+}
+`
+
+	if got != want {
+		t.Errorf("unexpected output:\nGot:\n%s\nWant:\n%s", got, want)
+	}
+}
+
+func TestEnumTypeGenerator(t *testing.T) {
+	enum := &sqlparser.EnumType{
+		Name:   "UserStatus",
+		Values: []string{"active", "inactive", "banned"},
+	}
+
+	got, err := GenerateEnumType(*enum)
+	if err != nil {
+		t.Fatalf("generating enum type failed: %v", err)
+	}
+
+	want := `type UserStatus string
+
+const (
+	Active UserStatus = "active"
+	Inactive UserStatus = "inactive"
+	Banned UserStatus = "banned"
+)
+`
+
+	if got != want {
+		t.Errorf("unexpected output:\nGot:\n%s\nWant:\n%s", got, want)
 	}
 }

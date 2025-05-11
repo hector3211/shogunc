@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"shogunc/cmd/generate"
+	"shogunc/utils"
 	"testing"
 	"time"
 )
@@ -435,7 +436,7 @@ func TestStringifyTableType(t *testing.T) {
 			{
 				Name:     "status",
 				DataType: Token{Type: ENUM, Literal: "UserStatus"},
-				Default:  strPtr("active"),
+				Default:  utils.StrPtr("active"),
 			},
 		},
 	}
@@ -464,8 +465,4 @@ func TestStringifyEnumType(t *testing.T) {
 	if got != expected {
 		t.Errorf("unexpected enum SQL:\nGot:\n%s\n\nExpected:\n%s", got, expected)
 	}
-}
-
-func strPtr(s string) *string {
-	return &s
 }

@@ -29,7 +29,8 @@ func generateSelectOne(query *sqlparser.SelectStatement) string {
 	} else {
 		sb.WriteString("Select(")
 		for idx, f := range query.Fields {
-			sb.WriteString(f)
+			// NOTE: Field names come from the lexer capitalized
+			sb.WriteString(fmt.Sprintf("\"%s\"", strings.ToLower(f)))
 
 			if idx < len(query.Fields)-1 {
 				sb.WriteString(",")
@@ -84,24 +85,24 @@ func shoguncConditionalOp(cond sqlparser.Condition) string {
 
 func shoguncEqualOp(cond sqlparser.Condition) string {
 	strB := strings.Builder{}
-	strB.WriteString(fmt.Sprintf("Equal(%s, %v)", string(cond.Left), cond.Right))
+	strB.WriteString(fmt.Sprintf("Equal(\"%s\", %v)", string(cond.Left), cond.Right))
 	return strB.String()
 }
 
 func shoguncNotEqualOp(cond sqlparser.Condition) string {
 	strB := strings.Builder{}
-	strB.WriteString(fmt.Sprintf("NotEqual(%s, %v)", string(cond.Left), cond.Right))
+	strB.WriteString(fmt.Sprintf("NotEqual(\"%s\", %v)", string(cond.Left), cond.Right))
 	return strB.String()
 }
 
 func shoguncLessThanOp(cond sqlparser.Condition) string {
 	strB := strings.Builder{}
-	strB.WriteString(fmt.Sprintf("LessThan(%s, %v)", string(cond.Left), cond.Right))
+	strB.WriteString(fmt.Sprintf("LessThan(\"%s\", %v)", string(cond.Left), cond.Right))
 	return strB.String()
 }
 
 func shoguncGreaterThanOp(cond sqlparser.Condition) string {
 	strB := strings.Builder{}
-	strB.WriteString(fmt.Sprintf("GreaterThan(%s, %v)", string(cond.Left), cond.Right))
+	strB.WriteString(fmt.Sprintf("GreaterThan(\"%s\", %v)", string(cond.Left), cond.Right))
 	return strB.String()
 }

@@ -27,7 +27,7 @@ func TestGenerateQuerySimpleSelect(t *testing.T) {
 
 	got := gen.GenerateFunction(stmt)
 	want := fmt.Sprintf(`func %s() {
-query := Select(id,name).From(users).Where(Equal(name, 'john')).Build()
+query := Select("id","name").From(users).Where(Equal("name", 'john')).Build()
 }`, tag.Name)
 
 	if got != want {
@@ -61,11 +61,11 @@ func TestGenerateQueryWithLogicalOps(t *testing.T) {
 
 	got := gen.GenerateFunction(stmt)
 	want := fmt.Sprintf(`func %s() {
-query := Select(id,name).From(users).Where(And(),Equal(name, 'john'),GreaterThan(id, 10)).Build()
+query := Select("id","name").From(users).Where(And(),Equal("name", 'john'),GreaterThan("id", 10)).Build()
 }`, tag.Name)
 
 	if got != want {
-		t.Errorf("expected:\n%s\ngot:\n%s", want, got)
+		t.Errorf("\nexpected:\n%s\ngot:\n%s", want, got)
 	}
 }
 
@@ -89,7 +89,7 @@ func TestGenerateQuerySelectAll(t *testing.T) {
 
 	got := gen.GenerateFunction(stmt)
 	want := fmt.Sprintf(`func %s() {
-query := Select('*').From(products).Where(LessThan(price, 100)).Build()
+query := Select('*').From(products).Where(LessThan("price", 100)).Build()
 }`, tag.Name)
 
 	if got != want {

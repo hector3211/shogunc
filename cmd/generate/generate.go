@@ -39,6 +39,7 @@ func NewGenerator() *Generator {
 		QueryPath:  []byte{},
 		SchemaPath: []byte{},
 		Driver:     "",
+		Types:      make(map[string]any),
 		Imports:    []string{"context"},
 	}
 }
@@ -142,12 +143,11 @@ func (g *Generator) ParseConfig(fileContents []byte) error {
 }
 
 func (g *Generator) LoadSchema() error {
-	// cwd, err := os.Getwd()
-	// if err != nil {
-	// 	return err
-	// }
-	// directory := filepath.Join(cwd, string(g.QueryPath))
-	file := fmt.Sprintf("../../%s", string(g.SchemaPath))
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	file := filepath.Join(cwd, string(g.SchemaPath))
 	fileContents, err := os.ReadFile(file)
 	if err != nil {
 		return err
@@ -155,7 +155,7 @@ func (g *Generator) LoadSchema() error {
 
 	lexer := sqlparser.NewLexer(string(fileContents))
 	ast := sqlparser.NewAst(lexer)
-	if err := ast.Parse(); err != nil {
+	if err := ast.ParseSchema(); err != nil {
 		return err
 	}
 

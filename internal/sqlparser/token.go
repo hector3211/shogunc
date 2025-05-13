@@ -159,6 +159,7 @@ var keyWords = map[string]TokenType{
 	"DELETE":    DELETE,
 	"CREATE":    CREATE,
 	"PRIMARY":   PRIMARY,
+	"UNIQUE":    UNIQUE,
 	"KEY":       KEY,
 	"TABLE":     TABLE,
 	"TYPE":      TYPE,

@@ -1,47 +1,11 @@
-package generate_test
+package generate
 
 import (
 	"os"
-	"shogunc/cmd/generate"
+	"path/filepath"
 	"strings"
 	"testing"
 )
-
-// func TestSetUpGenerator(t *testing.T) {
-// 	t.Helper()
-// 	configContents, err := os.ReadFile("../../shogunc.yml")
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-//
-// 	gen := generate.NewGenerator()
-// 	if err := gen.ParseConfig(configContents); err != nil {
-// 		t.Fatal(err)
-// 	}
-//
-// 	if err := gen.LoadSqlFiles(); err != nil {
-// 		t.Fatalf("[GENERATE_TEST] failed: %v", err)
-// 	}
-// }
-//
-// func TestSetUpSchema(t *testing.T) {
-// 	t.Helper()
-//
-// 	configContents, err := os.ReadFile("../../shogunc.yml")
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-//
-// 	gen := generate.NewGenerator()
-// 	if err := gen.ParseConfig(configContents); err != nil {
-// 		t.Fatal(err)
-// 	}
-//
-// 	err = gen.LoadSchema()
-// 	if err != nil {
-// 		t.Fatalf("[GENERATE_TEST] failed: %v", err)
-// 	}
-// }
 
 func TestLoadConfig(t *testing.T) {
 	configContents, err := os.ReadFile("../../shogunc.yml")
@@ -49,7 +13,7 @@ func TestLoadConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	gen := generate.NewGenerator()
+	gen := NewGenerator()
 	if err := gen.ParseConfig(configContents); err != nil {
 		t.Fatal(err)
 	}
@@ -68,29 +32,77 @@ func TestLoadConfig(t *testing.T) {
 }
 
 func TestParseSqlFile(t *testing.T) {
-	sql := `-- name: getUserById :one
-SELECT * FROM users WHERE id = $1;
+	tmpDir := t.TempDir()
 
--- name: listUsers :many
-SELECT * FROM users;
+	schemaContent := `
+CREATE TABLE IF NOT EXISTS "users" (
+    "id"          UUID PRIMARY KEY,
+    "clerk_id"    TEXT UNIQUE                    NOT NULL,
+    "first_name"  VARCHAR                        NOT NULL,
+    "last_name"   VARCHAR                        NOT NULL,
+    "email"       VARCHAR                        NOT NULL,
+    "phone"       VARCHAR                        NULL,
+    "unit_number" SMALLINT                       NULL,
+    "role"        "Role"                         NOT NULL DEFAULT "Role" 'tenant',
+    "status"      "Account_Status"               NOT NULL DEFAULT "Account_Status" 'active',
+    "last_login"  TIMESTAMP NOT NULL,
+    "updated_at"  TIMESTAMP          DEFAULT now(),
+    "created_at"  TIMESTAMP          DEFAULT now()
+);
 
--- name: GetUserByClerkId :one
-SELECT id, clerk_id, first_name, last_name, email, phone, role, status, created_at
-FROM users
-WHERE first_name = 'hector'
-LIMIT 1;
+CREATE TABLE IF NOT EXISTS "lockers" (
+    "id"          UUID PRIMARY KEY,
+    "access_code" VARCHAR,
+    "in_use"      BOOLEAN NOT NULL DEFAULT false,
+    "user_id"     BIGINT
+);
 
 	`
-
-	tmpFile := createTempSqlFile(t, sql)
-	defer os.Remove(tmpFile.Name())
-
-	gen := generate.NewGenerator()
-	out, err := gen.ParseSqlFile(tmpFile)
+	schemaPath := filepath.Join(tmpDir, "schema.sql")
+	err := os.WriteFile(schemaPath, []byte(schemaContent), 0644)
 	if err != nil {
-		t.Fatalf("[GENERATE_TEST] error: %v", err)
+		t.Fatalf("failed writing schema: %v", err)
 	}
 
+	sqlContent := `-- name: GetUserById :one
+SELECT * FROM users WHERE id = ?;
+`
+	sqlDir := filepath.Join(tmpDir, "queries")
+	os.Mkdir(sqlDir, 0755)
+	sqlFile := filepath.Join(sqlDir, "query.sql")
+	err = os.WriteFile(sqlFile, []byte(sqlContent), 0644)
+	if err != nil {
+		t.Fatalf("failed writing sql file: %v", err)
+	}
+
+	gen := NewGenerator()
+	gen.SchemaPath = []byte(filepath.Join("schema.sql"))
+	gen.QueryPath = []byte(filepath.Join("queries"))
+	gen.Driver = SQLITE
+
+	oldwd, _ := os.Getwd()
+	defer os.Chdir(oldwd)
+	os.Chdir(tmpDir)
+
+	err = gen.LoadSchema()
+	if err != nil {
+		t.Fatalf("LoadSchema failed: %v", err)
+	}
+
+	if _, ok := gen.Types["users"]; !ok {
+		t.Fatalf("expected type Users to be loaded from schema")
+	}
+
+	file, err := os.Open(sqlFile)
+	if err != nil {
+		t.Fatalf("failed to open sql file: %v", err)
+	}
+	defer file.Close()
+
+	out, err := gen.ParseSqlFile(file)
+	if err != nil {
+		t.Fatalf("ParseSqlFile failed: %v", err)
+	}
 	t.Logf("[OUTPUT]: %s\n", out)
 
 	if !strings.Contains(out, "func GetUserById(ctx context.Context)") {
@@ -104,19 +116,84 @@ LIMIT 1;
 	}
 }
 
-func createTempSqlFile(t *testing.T, content string) *os.File {
+func TestHasConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	yml := `
+queries: queries
+schema: schema.sql
+driver: sqlite3
+`
+	_ = createTempFile(t, tmpDir, "shogunc.yml", yml)
+
+	oldWd, _ := os.Getwd()
+	defer os.Chdir(oldWd)
+	os.Chdir(tmpDir)
+
+	gen := NewGenerator()
+	if !gen.HasConfig() {
+		t.Fatal("Expected HasConfig to return true")
+	}
+}
+
+func TestParseConfig(t *testing.T) {
+	gen := NewGenerator()
+	yml := `
+queries: queries
+schema: schema.sql
+driver: sqlite3
+`
+	err := gen.ParseConfig([]byte(yml))
+	if err != nil {
+		t.Fatalf("Expected ParseConfig to succeed: %v", err)
+	}
+	if string(gen.QueryPath) != "queries" {
+		t.Errorf("Expected query path 'sql', got '%s'", gen.QueryPath)
+	}
+	if string(gen.SchemaPath) != "schema.sql" {
+		t.Errorf("Expected schema path 'schema.sql', got '%s'", gen.SchemaPath)
+	}
+	if gen.Driver != SQLITE {
+		t.Errorf("Expected driver sqlite3, got %s", gen.Driver)
+	}
+}
+
+func TestExtractSqlBlocks(t *testing.T) {
+	sql := `-- name: GetUserById :one
+SELECT * FROM users WHERE id = ?;
+-- name: ListUsers :many
+SELECT * FROM users;
+`
+	file := filepath.Join(t.TempDir(), "test.sql")
+	os.WriteFile(file, []byte(sql), 0644)
+	f, err := os.Open(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	gen := NewGenerator()
+	blocks, err := gen.extractSqlBlocks(f, "test.sql")
+	if err != nil {
+		t.Fatalf("extractSqlBlocks failed: %v", err)
+	}
+
+	if len(blocks) != 2 {
+		t.Fatalf("Expected 2 query blocks, got %d", len(blocks))
+	}
+	if blocks[0].Name != "GetUserById" {
+		t.Errorf("Expected first block name 'GetUserById', got '%s'", blocks[0].Name)
+	}
+	if !strings.Contains(blocks[0].SQL, "SELECT * FROM users") {
+		t.Errorf("Unexpected SQL in first block")
+	}
+}
+
+func createTempFile(t *testing.T, dir, name, contents string) string {
 	t.Helper()
-	tmpFile, err := os.CreateTemp("", "*.sql")
+	path := filepath.Join(dir, name)
+	err := os.WriteFile(path, []byte(contents), 0644)
 	if err != nil {
-		t.Fatalf("failed to create temp file: %v", err)
+		t.Fatalf("Failed to write temp file: %v", err)
 	}
-	_, err = tmpFile.WriteString(content)
-	if err != nil {
-		t.Fatalf("failed to write to temp file: %v", err)
-	}
-	_, err = tmpFile.Seek(0, 0)
-	if err != nil {
-		t.Fatalf("failed to rewind temp file: %v", err)
-	}
-	return tmpFile
+	return path
 }

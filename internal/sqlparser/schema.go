@@ -15,8 +15,8 @@ type Field struct {
 }
 
 type TableType struct {
-	Name   string
-	Fields []Field
+	Name   string  // Table name
+	Fields []Field // table Fields
 }
 
 type EnumType struct {
@@ -128,7 +128,8 @@ func (a *Ast) parseTableField(idx int) (*Field, error) {
 			} else {
 				return nil, fmt.Errorf("[PARSER_TABLE] expected NULL got: %s field_idx: %d", a.currentToken.Literal, idx)
 			}
-
+		case NULL:
+			a.NextToken()
 		case UNIQUE:
 			field.IsUnique = true
 			a.NextToken()

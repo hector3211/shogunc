@@ -45,6 +45,21 @@ CREATE TYPE "Work_Category" AS ENUM (
     'other'
 );
 
+CREATE TABLE IF NOT EXISTS "users" (
+    "id"          UUID PRIMARY KEY,
+    "clerk_id"    TEXT UNIQUE                    NOT NULL,
+    "first_name"  VARCHAR                        NOT NULL,
+    "last_name"   VARCHAR                        NOT NULL,
+    "email"       VARCHAR                        NOT NULL,
+    "phone"       VARCHAR                        NULL,
+    "unit_number" SMALLINT                       NULL,
+    "role"        "Role"                         NOT NULL DEFAULT "Role" 'tenant',
+    "status"      "Account_Status"               NOT NULL DEFAULT "Account_Status" 'active',
+    "last_login"  TIMESTAMP NOT NULL,
+    "updated_at"  TIMESTAMP          DEFAULT now(),
+    "created_at"  TIMESTAMP          DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS "parking_permits" (
     "id"            UUID NOT NULL PRIMARY KEY,
     "permit_number" BIGINT NOT NULL,

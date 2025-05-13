@@ -2,60 +2,60 @@ package gogen
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"shogunc/internal/sqlparser"
 	"shogunc/utils"
 )
 
-type Type string
-
-const (
-	EXEC Type = "exec"
-	ONE  Type = "one"
-	MANY Type = "many"
-)
-
-type TagType struct {
-	Name []byte
-	Type Type
-}
-
-type GoFuncGenerator struct {
+type FuncGenerator struct {
 	Name       []byte
 	tagType    utils.Type
-	ReturnType []byte
+	ReturnType any
 }
 
-func NewGoFuncGenerator(statementName []byte, statementTag utils.Type) *GoFuncGenerator {
-	return &GoFuncGenerator{
+func NewFuncGenerator(statementName []byte, statementTag utils.Type, statementReturnType any) *FuncGenerator {
+	return &FuncGenerator{
 		Name:       statementName,
 		tagType:    statementTag,
-		ReturnType: []byte{},
+		ReturnType: statementReturnType,
 	}
 }
 
-func (g *GoFuncGenerator) GenerateFunction(statement sqlparser.Node) string {
+func (g FuncGenerator) GenerateFunction(statement sqlparser.Node) (string, error) {
 	var sb bytes.Buffer
-	sb.WriteString(fmt.Sprintf("func %s() {\n", g.Name))
-	g.NewLine()
-	// f.Tab()
+	var returnType string
+	if g.tagType == utils.MANY {
+		returnType = "[]"
+	}
+	if g.tagType != utils.EXEC {
+		switch t := g.ReturnType.(type) {
+		case sqlparser.TableType:
+			returnType = returnType + t.Name
+		default:
+			return "", errors.New("[BUILDER] failed infering type")
+		}
+	}
+
+	sb.WriteString(fmt.Sprintf("func %s(ctx context.Context) %s {", g.Name, returnType))
+	sb.WriteString(g.NewLine())
+
 	switch stmt := statement.(type) {
 	case *sqlparser.SelectStatement:
 		sb.WriteString(generateSelectFunction(g.tagType, stmt))
 	default:
-		sb.WriteString("Failed parsing statement")
+		return "", errors.New("[BUILDER] fialed parsing SQL statement")
 	}
+
 	sb.WriteString(g.NewLine())
 	sb.WriteString("}")
-
-	// return sb.Bytes()
-	return sb.String()
+	return sb.String(), nil
 }
 
-func (g *GoFuncGenerator) Tab() string {
+func (g FuncGenerator) Tab() string {
 	return "\t"
 }
 
-func (g *GoFuncGenerator) NewLine() string {
+func (g FuncGenerator) NewLine() string {
 	return "\n"
 }

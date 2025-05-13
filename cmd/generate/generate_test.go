@@ -7,45 +7,41 @@ import (
 	"testing"
 )
 
-func setUpGenerator(t *testing.T) *generate.Generator {
-	t.Helper()
-	configContents, err := os.ReadFile("../../shogunc.yml")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	gen := generate.NewGenerator()
-	if err := gen.ParseConfig(configContents); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := gen.LoadSqlFiles(); err != nil {
-		t.Fatalf("Error loading sql files: %v", err)
-	}
-
-	return gen
-}
-
-func setUpSchema(t *testing.T) []byte {
-	t.Helper()
-
-	configContents, err := os.ReadFile("../../shogunc.yml")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	gen := generate.NewGenerator()
-	if err := gen.ParseConfig(configContents); err != nil {
-		t.Fatal(err)
-	}
-
-	schema, err := gen.LoadSchema()
-	if err != nil {
-		t.Fatalf("Error loading sql files: %v", err)
-	}
-
-	return schema
-}
+// func TestSetUpGenerator(t *testing.T) {
+// 	t.Helper()
+// 	configContents, err := os.ReadFile("../../shogunc.yml")
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+//
+// 	gen := generate.NewGenerator()
+// 	if err := gen.ParseConfig(configContents); err != nil {
+// 		t.Fatal(err)
+// 	}
+//
+// 	if err := gen.LoadSqlFiles(); err != nil {
+// 		t.Fatalf("[GENERATE_TEST] failed: %v", err)
+// 	}
+// }
+//
+// func TestSetUpSchema(t *testing.T) {
+// 	t.Helper()
+//
+// 	configContents, err := os.ReadFile("../../shogunc.yml")
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+//
+// 	gen := generate.NewGenerator()
+// 	if err := gen.ParseConfig(configContents); err != nil {
+// 		t.Fatal(err)
+// 	}
+//
+// 	err = gen.LoadSchema()
+// 	if err != nil {
+// 		t.Fatalf("[GENERATE_TEST] failed: %v", err)
+// 	}
+// }
 
 func TestLoadConfig(t *testing.T) {
 	configContents, err := os.ReadFile("../../shogunc.yml")
@@ -69,40 +65,6 @@ func TestLoadConfig(t *testing.T) {
 	if len(gen.SchemaPath) == 0 {
 		t.Fatalf("Expected schema entry Got: %d", len(gen.SchemaPath))
 	}
-}
-
-// func TestParseSqlFile(t *testing.T) {
-// 	configContents, err := os.ReadFile("../../shogunc.yml")
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-//
-// 	gen := generate.NewGenerator()
-// 	if err := gen.ParseConfig(configContents); err != nil {
-// 		t.Fatal(err)
-// 	}
-//
-// 	if err := gen.LoadSqlFiles(); err != nil {
-// 		t.Fatalf("Error loading sql files: %v", err)
-// 	}
-// }
-
-// helper to create temp .sql file
-func createTempSqlFile(t *testing.T, content string) *os.File {
-	t.Helper()
-	tmpFile, err := os.CreateTemp("", "*.sql")
-	if err != nil {
-		t.Fatalf("failed to create temp file: %v", err)
-	}
-	_, err = tmpFile.WriteString(content)
-	if err != nil {
-		t.Fatalf("failed to write to temp file: %v", err)
-	}
-	_, err = tmpFile.Seek(0, 0)
-	if err != nil {
-		t.Fatalf("failed to rewind temp file: %v", err)
-	}
-	return tmpFile
 }
 
 func TestParseSqlFile(t *testing.T) {
@@ -131,13 +93,30 @@ LIMIT 1;
 
 	t.Logf("[OUTPUT]: %s\n", out)
 
-	if !strings.Contains(out, "func GetUserById()") {
+	if !strings.Contains(out, "func GetUserById(ctx context.Context)") {
 		t.Errorf("[GENERATE_TEST] expected output to contain 'func GetUserById', got: %s", out)
 	}
-	if !strings.Contains(out, "func ListUsers()") {
+	if !strings.Contains(out, "func ListUsers(ctx context.Context)") {
 		t.Errorf("[GENERATE_TEST] expected output to contain 'func ListUsers', got: %s", out)
 	}
-	if !strings.Contains(out, "func GetUserByClerkId()") {
+	if !strings.Contains(out, "func GetUserByClerkId(ctx context.Context)") {
 		t.Errorf("[GENERATE_TEST] expected output to contain 'func ListUsers', got: %s", out)
 	}
+}
+
+func createTempSqlFile(t *testing.T, content string) *os.File {
+	t.Helper()
+	tmpFile, err := os.CreateTemp("", "*.sql")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	_, err = tmpFile.WriteString(content)
+	if err != nil {
+		t.Fatalf("failed to write to temp file: %v", err)
+	}
+	_, err = tmpFile.Seek(0, 0)
+	if err != nil {
+		t.Fatalf("failed to rewind temp file: %v", err)
+	}
+	return tmpFile
 }

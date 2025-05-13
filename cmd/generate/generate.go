@@ -20,9 +20,9 @@ const (
 )
 
 type QueryBlock struct {
-	Name     string
+	Name     string // -name: GetUser
 	Type     utils.Type
-	SQL      string
+	SQL      string // sql query statement
 	Filename string // for debug or error reporting
 }
 
@@ -30,7 +30,7 @@ type Generator struct {
 	QueryPath  []byte
 	SchemaPath []byte
 	Driver     Driver
-	Types      []string
+	Types      map[string]any
 	Imports    []string
 }
 
@@ -39,37 +39,20 @@ func NewGenerator() *Generator {
 		QueryPath:  []byte{},
 		SchemaPath: []byte{},
 		Driver:     "",
-		Types:      []string{},
-		Imports:    []string{},
+		Imports:    []string{"context"},
 	}
 }
 
 // Generate code
 func (g *Generator) Execute() error {
+	if !g.HasConfig() {
+		return fmt.Errorf("shogunc config file does not exists")
+	}
 	err := g.LoadConfig()
 	if err != nil {
 		return err
 	}
 
-	return nil
-}
-
-func (g *Generator) LoadConfig() error {
-	if !g.HasConfig() {
-		return fmt.Errorf("shogunc config file does not exists")
-	}
-
-	cwd, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-
-	configFile, err := os.ReadFile(fmt.Sprintf("%s/shogunc.yml", cwd))
-	if err != nil {
-		return err
-	}
-
-	g.ParseConfig(configFile)
 	return nil
 }
 
@@ -83,6 +66,21 @@ func (g Generator) HasConfig() bool {
 	_, err = os.ReadFile(fmt.Sprintf("%s/shogunc.yml", cwd))
 
 	return err == nil
+}
+
+func (g *Generator) LoadConfig() error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
+	configFile, err := os.ReadFile(fmt.Sprintf("%s/shogunc.yml", cwd))
+	if err != nil {
+		return err
+	}
+
+	g.ParseConfig(configFile)
+	return nil
 }
 
 // parse for
@@ -133,6 +131,9 @@ func (g *Generator) ParseConfig(fileContents []byte) error {
 		return fmt.Errorf("failed reading sql driver")
 	}
 
+	g.LoadSchema()
+	g.LoadSqlFiles()
+
 	// fmt.Printf("queries: %s\n", g.QueryPath)
 	// fmt.Printf("schema: %s\n", g.SchemaPath)
 	// fmt.Printf("driver: %s\n", g.Driver)
@@ -140,20 +141,52 @@ func (g *Generator) ParseConfig(fileContents []byte) error {
 	return nil
 }
 
-// Read sql file / files
-// Look for special tag: --name: GetUserById :one
-func (g *Generator) LoadSqlFiles() error {
+func (g *Generator) LoadSchema() error {
 	// cwd, err := os.Getwd()
 	// if err != nil {
 	// 	return err
 	// }
 	// directory := filepath.Join(cwd, string(g.QueryPath))
-	directory := fmt.Sprintf("../../%s", string(g.QueryPath)) // TODO: remove this after testing
+	file := fmt.Sprintf("../../%s", string(g.SchemaPath))
+	fileContents, err := os.ReadFile(file)
+	if err != nil {
+		return err
+	}
+
+	lexer := sqlparser.NewLexer(string(fileContents))
+	ast := sqlparser.NewAst(lexer)
+	if err := ast.Parse(); err != nil {
+		return err
+	}
+
+	for _, datatype := range ast.Statements {
+		switch t := datatype.(type) {
+		case *sqlparser.TableType:
+			if _, ok := g.Types[t.Name]; !ok {
+				g.Types[t.Name] = t
+			}
+		case *sqlparser.EnumType:
+			if _, ok := g.Types[t.Name]; !ok {
+				g.Types[t.Name] = t
+			}
+		}
+	}
+	return nil
+}
+
+// Read sql file / files
+// Look for special tag: --name: GetUserById :one
+func (g Generator) LoadSqlFiles() error {
+	// cwd, err := os.Getwd()
+	// if err != nil {
+	// 	return err
+	// }
+	// directory := filepath.Join(cwd, string(g.QueryPath))
+	directory := fmt.Sprintf("../../%s", string(g.QueryPath))
 	dirEntries, err := os.ReadDir(directory)
 	if err != nil {
 		return err
 	}
-	// fmt.Printf("DIR: %s\n", directory)
 
 	for _, entry := range dirEntries {
 		if entry.IsDir() {
@@ -178,9 +211,9 @@ func (g *Generator) LoadSqlFiles() error {
 	return nil
 }
 
-func (g *Generator) ParseSqlFile(file *os.File) (string, error) {
+func (g Generator) ParseSqlFile(file *os.File) (string, error) {
 	var bytes strings.Builder
-	queryBlocks, err := extractSqlBlocks(file, file.Name())
+	queryBlocks, err := g.extractSqlBlocks(file, file.Name())
 	if err != nil {
 		return "", err
 	}
@@ -189,20 +222,27 @@ func (g *Generator) ParseSqlFile(file *os.File) (string, error) {
 		lexer := sqlparser.NewLexer(qb.SQL)
 		ast := sqlparser.NewAst(lexer)
 		if err := ast.Parse(); err != nil {
-			return "", fmt.Errorf("failed parsing %s: %w", qb.Name, err)
+			return "", fmt.Errorf("[GENERATE] failed parsing %s: %w", qb.Name, err)
 		}
 
-		funcGen := gogen.NewGoFuncGenerator([]byte(qb.Name), qb.Type)
+		dataType := g.inferType(qb.Name)
+		if dataType == nil {
+			return "", fmt.Errorf("[GENERATE] failed infering type for %s", qb.Name)
+		}
+
+		funcGen := gogen.NewFuncGenerator([]byte(qb.Name), qb.Type, dataType)
 		for _, stmt := range ast.Statements {
-			code := funcGen.GenerateFunction(stmt)
-			bytes.WriteString(code)
-			bytes.WriteString("\n")
+			code, err := funcGen.GenerateFunction(stmt)
+			if err != nil {
+				return "", err
+			}
+			bytes.WriteString(code + "\n")
 		}
 	}
 	return bytes.String(), nil
 }
 
-func extractSqlBlocks(file *os.File, fileName string) ([]QueryBlock, error) {
+func (g Generator) extractSqlBlocks(file *os.File, fileName string) ([]QueryBlock, error) {
 	scanner := bufio.NewScanner(file)
 	tagReg := regexp.MustCompile(`--\s*name:\s*(\w+)\s*:(\w+)`) // -- name: GetUserById :one
 	var blocks []QueryBlock
@@ -247,18 +287,9 @@ func extractSqlBlocks(file *os.File, fileName string) ([]QueryBlock, error) {
 	return blocks, nil
 }
 
-func (g Generator) LoadSchema() ([]byte, error) {
-	// cwd, err := os.Getwd()
-	// if err != nil {
-	// 	return err
-	// }
-	// directory := filepath.Join(cwd, string(g.QueryPath))
-	// TODO: remove this after testing
-	file := fmt.Sprintf("../../%s", string(g.SchemaPath))
-	fileContents, err := os.ReadFile(file)
-	if err != nil {
-		return nil, err
+func (g Generator) inferType(name string) any {
+	if datType, ok := g.Types[name]; ok {
+		return datType
 	}
-
-	return fileContents, nil
+	return nil
 }

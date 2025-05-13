@@ -2,7 +2,7 @@ package utils
 
 import "strings"
 
-type Type string
+type Type string // exec | one | many
 
 const (
 	EXEC Type = "exec"

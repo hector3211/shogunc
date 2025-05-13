@@ -8,11 +8,15 @@ import (
 )
 
 func TestGenerateQuerySimpleSelect(t *testing.T) {
+	table := sqlparser.TableType{
+		Name:   "User",
+		Fields: []sqlparser.Field{},
+	}
 	tag := utils.TagType{
 		Name: []byte("GetUser"),
 		Type: "one",
 	}
-	gen := NewGoFuncGenerator(tag.Name, tag.Type)
+	gen := NewFuncGenerator(tag.Name, tag.Type, table)
 	stmt := &sqlparser.SelectStatement{
 		TableName: "users",
 		Fields:    []string{"id", "name"},
@@ -20,14 +24,17 @@ func TestGenerateQuerySimpleSelect(t *testing.T) {
 			{
 				Left:     []byte("name"),
 				Operator: sqlparser.EQUAL,
-				Right:    "'john'",
+				Right:    "john",
 			},
 		},
 	}
 
-	got := gen.GenerateFunction(stmt)
-	want := fmt.Sprintf(`func %s() {
-query := Select("id","name").From(users).Where(Equal("name", 'john')).Build()
+	got, err := gen.GenerateFunction(stmt)
+	if err != nil {
+		t.Error(err)
+	}
+	want := fmt.Sprintf(`func %s(ctx context.Context) User {
+query := Select("id","name").From("users").Where(Equal("name", "john")).Build()
 }`, tag.Name)
 
 	if got != want {
@@ -36,11 +43,15 @@ query := Select("id","name").From(users).Where(Equal("name", 'john')).Build()
 }
 
 func TestGenerateQueryWithLogicalOps(t *testing.T) {
+	table := sqlparser.TableType{
+		Name:   "User",
+		Fields: []sqlparser.Field{},
+	}
 	tag := utils.TagType{
 		Name: []byte("GetUser"),
 		Type: "one",
 	}
-	gen := NewGoFuncGenerator(tag.Name, tag.Type)
+	gen := NewFuncGenerator(tag.Name, tag.Type, table)
 	stmt := &sqlparser.SelectStatement{
 		TableName: "users",
 		Fields:    []string{"id", "name"},
@@ -48,7 +59,7 @@ func TestGenerateQueryWithLogicalOps(t *testing.T) {
 			{
 				Left:     []byte("name"),
 				Operator: sqlparser.EQUAL,
-				Right:    "'john'",
+				Right:    "john",
 				Next:     sqlparser.And,
 			},
 			{
@@ -59,9 +70,12 @@ func TestGenerateQueryWithLogicalOps(t *testing.T) {
 		},
 	}
 
-	got := gen.GenerateFunction(stmt)
-	want := fmt.Sprintf(`func %s() {
-query := Select("id","name").From(users).Where(And(),Equal("name", 'john'),GreaterThan("id", 10)).Build()
+	got, err := gen.GenerateFunction(stmt)
+	if err != nil {
+		t.Error(err)
+	}
+	want := fmt.Sprintf(`func %s(ctx context.Context) User {
+query := Select("id","name").From("users").Where(And(),Equal("name", "john"),GreaterThan("id", 10)).Build()
 }`, tag.Name)
 
 	if got != want {
@@ -70,26 +84,33 @@ query := Select("id","name").From(users).Where(And(),Equal("name", 'john'),Great
 }
 
 func TestGenerateQuerySelectAll(t *testing.T) {
+	table := sqlparser.TableType{
+		Name:   "Lockers",
+		Fields: []sqlparser.Field{},
+	}
 	tag := utils.TagType{
-		Name: []byte("GetProducts"),
+		Name: []byte("GetLocker"),
 		Type: "one",
 	}
-	gen := NewGoFuncGenerator(tag.Name, tag.Type)
+	gen := NewFuncGenerator(tag.Name, tag.Type, table)
 	stmt := &sqlparser.SelectStatement{
-		TableName: "products",
+		TableName: "lockers",
 		Fields:    []string{"*"}, // SELECT *
 		Conditions: []sqlparser.Condition{
 			{
-				Left:     []byte("price"),
-				Operator: sqlparser.LESSTHAN,
-				Right:    100,
+				Left:     []byte("access_code"),
+				Operator: sqlparser.EQUAL,
+				Right:    "k1jk21",
 			},
 		},
 	}
 
-	got := gen.GenerateFunction(stmt)
-	want := fmt.Sprintf(`func %s() {
-query := Select('*').From(products).Where(LessThan("price", 100)).Build()
+	got, err := gen.GenerateFunction(stmt)
+	if err != nil {
+		t.Error(err)
+	}
+	want := fmt.Sprintf(`func %s(ctx context.Context) Lockers {
+query := Select('*').From("lockers").Where(Equal("access_code", "k1jk21")).Build()
 }`, tag.Name)
 
 	if got != want {
@@ -127,9 +148,9 @@ func TestTableTypeGenerator(t *testing.T) {
 	}
 
 	want := `type Users struct {
-	Id string ` + "`json:\"id\"`" + `
-	Email string ` + "`json:\"email\"`" + `
-	Status *UserStatus ` + "`json:\"status\"`" + `
+	Id string ` + "`db:\"id\"`" + `
+	Email string ` + "`db:\"email\"`" + `
+	Status *UserStatus ` + "`db:\"status\"`" + `
 }
 `
 

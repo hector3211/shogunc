@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS "users" (
 CREATE TABLE IF NOT EXISTS "lockers" (
     "id"          UUID PRIMARY KEY,
     "access_code" VARCHAR,
-    "in_use"      BOOLEAN NOT NULL DEFAULT false,
+    "in_use"      BOOLEAN NOT NULL DEFAULT FALSE,
     "user_id"     BIGINT
 );
 

@@ -141,18 +141,40 @@ func (a *Ast) parseTableField(idx int) (*Field, error) {
 				a.NextToken() // Consume now
 				a.NextToken() // Consume (
 				a.NextToken() // Consume )
-			} else if a.currentToken.Type == STRING || a.currentToken.Type == INT || a.currentToken.Type == TRUE || a.currentToken.Type == FALSE {
+				continue
+			}
+
+			// Handle literals like: "Status" 'open'
+			if (a.currentToken.Type == IDENT || a.currentToken.Type == STRING) &&
+				a.isPrimitiveLiteral(a.peekToken.Type) {
+				a.NextToken() // Skip the prefix "Status"
 				val := a.currentToken.Literal
 				field.Default = &val
 				a.NextToken()
-			} else {
-				return nil, fmt.Errorf("[PARSER_TABLE] expected literal (STRING, INT, TRUE, FALSE, or now()), got: %s field_idx: %d", a.currentToken.Literal, idx)
+				continue
 			}
+
+			// Handle plain literals (STRING, INT, TRUE, FALSE)
+			if a.isPrimitiveLiteral(a.currentToken.Type) {
+				val := a.currentToken.Literal
+				field.Default = &val
+				a.NextToken()
+				continue
+			}
+
+			return nil, fmt.Errorf(
+				"[PARSER_TABLE] invalid DEFAULT value: %s TYPE: %v field_idx: %d",
+				a.currentToken.Literal, a.currentToken.Type, idx,
+			)
 		default:
-			return nil, fmt.Errorf("[PARSER_TABLE] unexpected token in field definition: %s field_idx: %d", a.currentToken.Literal, idx)
+			return nil, fmt.Errorf("[PARSER_TABLE] unexpected token in field definition: %s TYPE: %v field_idx: %d", a.currentToken.Literal, a.currentToken.Type, idx)
 		}
 	}
 	return &field, nil
+}
+
+func (a Ast) isPrimitiveLiteral(t TokenType) bool {
+	return t == STRING || t == INT || t == TRUE || t == FALSE
 }
 
 func (a *Ast) parseType() error {

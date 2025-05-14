@@ -16,7 +16,7 @@ func TestGenerateQuerySimpleSelect(t *testing.T) {
 		Name: []byte("GetUser"),
 		Type: "one",
 	}
-	gen := NewFuncGenerator(tag.Name, tag.Type, table)
+	gen := NewFuncGenerator(tag.Name, tag.Type, &table)
 	stmt := &sqlparser.SelectStatement{
 		TableName: "users",
 		Fields:    []string{"id", "name"},
@@ -51,7 +51,7 @@ func TestGenerateQueryWithLogicalOps(t *testing.T) {
 		Name: []byte("GetUser"),
 		Type: "one",
 	}
-	gen := NewFuncGenerator(tag.Name, tag.Type, table)
+	gen := NewFuncGenerator(tag.Name, tag.Type, &table)
 	stmt := &sqlparser.SelectStatement{
 		TableName: "users",
 		Fields:    []string{"id", "name"},
@@ -92,7 +92,7 @@ func TestGenerateQuerySelectAll(t *testing.T) {
 		Name: []byte("GetLocker"),
 		Type: "one",
 	}
-	gen := NewFuncGenerator(tag.Name, tag.Type, table)
+	gen := NewFuncGenerator(tag.Name, tag.Type, &table)
 	stmt := &sqlparser.SelectStatement{
 		TableName: "lockers",
 		Fields:    []string{"*"}, // SELECT *

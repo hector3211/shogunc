@@ -230,11 +230,10 @@ func (g Generator) ParseSqlFile(file *os.File) (string, error) {
 
 		dataType := g.inferType(qb.SQL)
 		if dataType == nil {
-			return "", fmt.Errorf("[GENERATE] failed infering type for %s", qb.Name)
+			return "", fmt.Errorf("[GENERATE] failed infering type for %s\n SQL: %s", qb.Name, qb.SQL)
 		}
 
-		// TODO: start debugging here
-		fmt.Printf("[GENERATE] data type being passed in gogen: %v\n\n", dataType)
+		fmt.Printf("[GENERATE] data type in ParseSqlFile : %v\n\n", dataType)
 
 		funcGen := gogen.NewFuncGenerator([]byte(qb.Name), qb.Type, dataType)
 		for _, stmt := range ast.Statements {
@@ -294,9 +293,10 @@ func (g Generator) extractSqlBlocks(file *os.File, fileName string) ([]QueryBloc
 }
 
 func (g Generator) inferType(sql string) any {
-	keys := strings.SplitSeq(sql, " ")
-	for k := range keys {
-		if datType, ok := g.Types[k]; ok {
+	tokens := strings.Fields(sql)
+	for _, k := range tokens {
+		key := strings.Trim(k, ";,()")
+		if datType, ok := g.Types[key]; ok {
 			return datType
 		}
 	}

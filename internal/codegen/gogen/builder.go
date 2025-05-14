@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"shogunc/internal/sqlparser"
 	"shogunc/utils"
+	"strings"
 )
 
 type FuncGenerator struct {
@@ -28,12 +29,12 @@ func (g FuncGenerator) GenerateFunction(statement sqlparser.Node) (string, error
 	if g.tagType == utils.MANY {
 		returnType = "[]"
 	}
+
+	fmt.Printf("[BUILDER] data type GenerateFunction: %v\n\n", g.ReturnType)
 	if g.tagType != utils.EXEC {
 		switch t := g.ReturnType.(type) {
-		case sqlparser.TableType:
-			returnType = returnType + t.Name
-		case sqlparser.EnumType:
-			return "", errors.New("[BUILDER] failed ENUM  TYPE")
+		case *sqlparser.TableType:
+			returnType += strings.ToUpper(t.Name[:1]) + t.Name[1:]
 		default:
 			return "", errors.New("[BUILDER] failed infering type")
 		}

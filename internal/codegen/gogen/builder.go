@@ -32,6 +32,8 @@ func (g FuncGenerator) GenerateFunction(statement sqlparser.Node) (string, error
 		switch t := g.ReturnType.(type) {
 		case sqlparser.TableType:
 			returnType = returnType + t.Name
+		case sqlparser.EnumType:
+			return "", errors.New("[BUILDER] failed ENUM  TYPE")
 		default:
 			return "", errors.New("[BUILDER] failed infering type")
 		}

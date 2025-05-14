@@ -2,6 +2,7 @@ package generate
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -169,6 +170,8 @@ func (g *Generator) LoadSchema() error {
 			if _, ok := g.Types[t.Name]; !ok {
 				g.Types[t.Name] = t
 			}
+		default:
+			return errors.New("[GENERATE] load schema failed with invalid type")
 		}
 	}
 	return nil
@@ -225,10 +228,13 @@ func (g Generator) ParseSqlFile(file *os.File) (string, error) {
 			return "", fmt.Errorf("[GENERATE] failed parsing %s: %w", qb.Name, err)
 		}
 
-		dataType := g.inferType(qb.Name)
+		dataType := g.inferType(qb.SQL)
 		if dataType == nil {
 			return "", fmt.Errorf("[GENERATE] failed infering type for %s", qb.Name)
 		}
+
+		// TODO: start debugging here
+		fmt.Printf("[GENERATE] data type being passed in gogen: %v\n\n", dataType)
 
 		funcGen := gogen.NewFuncGenerator([]byte(qb.Name), qb.Type, dataType)
 		for _, stmt := range ast.Statements {
@@ -287,9 +293,12 @@ func (g Generator) extractSqlBlocks(file *os.File, fileName string) ([]QueryBloc
 	return blocks, nil
 }
 
-func (g Generator) inferType(name string) any {
-	if datType, ok := g.Types[name]; ok {
-		return datType
+func (g Generator) inferType(sql string) any {
+	keys := strings.SplitSeq(sql, " ")
+	for k := range keys {
+		if datType, ok := g.Types[k]; ok {
+			return datType
+		}
 	}
 	return nil
 }

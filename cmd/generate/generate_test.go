@@ -14,20 +14,20 @@ func TestLoadConfig(t *testing.T) {
 	}
 
 	gen := NewGenerator()
-	if err := gen.ParseConfig(configContents); err != nil {
+	if err := gen.parseConfig(configContents); err != nil {
 		t.Fatal(err)
 	}
 
-	if gen.Driver == "" {
-		t.Fatalf("Expected driver entry [ 'sqlite', 'postgres' ] Got: %s", gen.Driver)
+	if gen.Config.Sql.Driver == "" {
+		t.Fatalf("Expected driver entry [ 'sqlite', 'postgres' ] Got: %s", gen.Config.Sql.Driver)
 	}
 
-	if len(gen.QueryPath) == 0 {
-		t.Fatalf("Expected queries entry Got: %d", len(gen.QueryPath))
+	if gen.Config.Sql.Queries == "" {
+		t.Fatalf("Expected queries entry Got: %s", gen.Config.Sql.Queries)
 	}
 
-	if len(gen.SchemaPath) == 0 {
-		t.Fatalf("Expected schema entry Got: %d", len(gen.SchemaPath))
+	if gen.Config.Sql.Schema == "" {
+		t.Fatalf("Expected schema entry Got: %s", gen.Config.Sql.Schema)
 	}
 }
 
@@ -80,9 +80,9 @@ SELECT * FROM users;
 	}
 
 	gen := NewGenerator()
-	gen.SchemaPath = []byte(filepath.Join("schema.sql"))
-	gen.QueryPath = []byte(filepath.Join("queries"))
-	gen.Driver = SQLITE
+	gen.Config.Sql.Schema = filepath.Join("schema.sql")
+	gen.Config.Sql.Queries = filepath.Join("queries")
+	gen.Config.Sql.Driver = SQLITE
 
 	oldwd, _ := os.Getwd()
 	defer os.Chdir(oldwd)
@@ -103,7 +103,7 @@ SELECT * FROM users;
 	}
 	defer file.Close()
 
-	out, err := gen.ParseSqlFile(file)
+	out, err := gen.parseSqlFile(file)
 	if err != nil {
 		t.Fatalf("[GENERATE_TEST] ParseSqlFile failed: %v", err)
 	}
@@ -123,9 +123,10 @@ SELECT * FROM users;
 func TestHasConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 	yml := `
-queries: queries
-schema: schema.sql
-driver: sqlite3
+sql:
+    queries: queries
+    schema: schema.sql
+    driver: sqlite3
 `
 	_ = createTempFile(t, tmpDir, "shogunc.yml", yml)
 
@@ -134,7 +135,7 @@ driver: sqlite3
 	os.Chdir(tmpDir)
 
 	gen := NewGenerator()
-	if !gen.HasConfig() {
+	if !gen.hasConfig() {
 		t.Fatal("Expected HasConfig to return true")
 	}
 }
@@ -142,28 +143,30 @@ driver: sqlite3
 func TestParseConfig(t *testing.T) {
 	gen := NewGenerator()
 	yml := `
-queries: queries
-schema: schema.sql
-driver: sqlite3
+sql:
+    queries: queries
+    schema: schema.sql
+    driver: sqlite3
 `
-	err := gen.ParseConfig([]byte(yml))
+	err := gen.parseConfig([]byte(yml))
 	if err != nil {
 		t.Fatalf("Expected ParseConfig to succeed: %v", err)
 	}
-	if string(gen.QueryPath) != "queries" {
-		t.Errorf("Expected query path 'sql', got '%s'", gen.QueryPath)
+	if string(gen.Config.Sql.Queries) != "queries" {
+		t.Errorf("Expected query path 'sql', got '%s'", gen.Config.Sql.Queries)
 	}
-	if string(gen.SchemaPath) != "schema.sql" {
-		t.Errorf("Expected schema path 'schema.sql', got '%s'", gen.SchemaPath)
+	if string(gen.Config.Sql.Schema) != "schema.sql" {
+		t.Errorf("Expected schema path 'schema.sql', got '%s'", gen.Config.Sql.Schema)
 	}
-	if gen.Driver != SQLITE {
-		t.Errorf("Expected driver sqlite3, got %s", gen.Driver)
+	if gen.Config.Sql.Driver != SQLITE {
+		t.Errorf("Expected driver sqlite3, got %s", gen.Config.Sql.Driver)
 	}
 }
 
 func TestExtractSqlBlocks(t *testing.T) {
 	sql := `-- name: GetUserById :one
 SELECT * FROM users WHERE id = ?;
+
 -- name: ListUsers :many
 SELECT * FROM users;
 `

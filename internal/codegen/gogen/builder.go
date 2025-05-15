@@ -30,7 +30,7 @@ func (g FuncGenerator) GenerateFunction(statement sqlparser.Node) (string, error
 		returnType = "[]"
 	}
 
-	fmt.Printf("[BUILDER] data type GenerateFunction: %v\n\n", g.ReturnType)
+	// fmt.Printf("[BUILDER] data type GenerateFunction: %v\n\n", g.ReturnType)
 	if g.tagType != utils.EXEC {
 		switch t := g.ReturnType.(type) {
 		case *sqlparser.TableType:
@@ -41,7 +41,7 @@ func (g FuncGenerator) GenerateFunction(statement sqlparser.Node) (string, error
 	}
 
 	sb.WriteString(fmt.Sprintf("func %s(ctx context.Context) %s {", g.Name, returnType))
-	sb.WriteString(g.NewLine())
+	sb.WriteString(g.newLine())
 
 	switch stmt := statement.(type) {
 	case *sqlparser.SelectStatement:
@@ -50,15 +50,15 @@ func (g FuncGenerator) GenerateFunction(statement sqlparser.Node) (string, error
 		return "", errors.New("[BUILDER] fialed parsing SQL statement")
 	}
 
-	sb.WriteString(g.NewLine())
+	sb.WriteString(g.newLine())
 	sb.WriteString("}")
 	return sb.String(), nil
 }
 
-func (g FuncGenerator) Tab() string {
+func (g FuncGenerator) tab() string {
 	return "\t"
 }
 
-func (g FuncGenerator) NewLine() string {
+func (g FuncGenerator) newLine() string {
 	return "\n"
 }

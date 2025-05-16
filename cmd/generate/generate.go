@@ -2,11 +2,17 @@ package generate
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"shogunc/internal/codegen/gogen"
+	"shogunc/internal/sqlparser"
+	"shogunc/utils"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 type Driver string
@@ -16,39 +22,48 @@ const (
 	POSTGRES Driver = "postgres"
 )
 
-type Type string
-
-const (
-	EXEC Type = "exec"
-	ONE  Type = "one"
-	MANY Type = "many"
-)
-
-type Query struct {
-	Name []byte
-	Type Type
-	SQL  []byte
+type QueryBlock struct {
+	Name     string // -name: GetUser
+	Type     utils.Type
+	SQL      string // sql query statement
+	Filename string // for debug or error reporting
 }
 
-type GeneratorBuilder struct {
-	QueryPath  []byte
-	Queries    []Query
-	SchemaPath []byte
-	Driver     Driver
+type SqlConfig struct {
+	Queries string `yaml:"queries"`
+	Schema  string `yaml:"schema"`
+	Driver  Driver `yaml:"driver"`
 }
 
-func NewGenerator() *GeneratorBuilder {
-	return &GeneratorBuilder{
-		QueryPath:  []byte{},
-		Queries:    []Query{},
-		SchemaPath: []byte{},
-		Driver:     "",
+type ShogunConfig struct {
+	Sql SqlConfig `yaml:"sql"`
+}
+
+type Generator struct {
+	Config  ShogunConfig
+	Types   map[string]any
+	Imports []string
+}
+
+func NewGenerator() *Generator {
+	return &Generator{
+		Config: ShogunConfig{
+			Sql: SqlConfig{
+				Queries: "",
+				Schema:  "",
+				Driver:  "",
+			},
+		},
+		Types:   make(map[string]any),
+		Imports: []string{"context"},
 	}
 }
 
-// Generate code
-func (g *GeneratorBuilder) Execute() error {
-	err := g.LoadConfig()
+func (g *Generator) Execute() error {
+	if !g.hasConfig() {
+		return fmt.Errorf("shogunc config file does not exists")
+	}
+	err := g.loadConfig()
 	if err != nil {
 		return err
 	}
@@ -56,8 +71,7 @@ func (g *GeneratorBuilder) Execute() error {
 	return nil
 }
 
-// Read shogunc config file
-func (g GeneratorBuilder) HasConfig() bool {
+func (g Generator) hasConfig() bool {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return false
@@ -68,94 +82,90 @@ func (g GeneratorBuilder) HasConfig() bool {
 	return err == nil
 }
 
-// parse for
-// schema
-// queries
-// driver
-func (g *GeneratorBuilder) ParseConfig(fileContents []byte) error {
-	lines := strings.Split(string(fileContents), "\n")
-	matchers := map[string]struct{}{
-		"queries": {},
-		"schema":  {},
-		"driver":  {},
-	}
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		parts := strings.SplitN(line, ":", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		key := strings.TrimSpace(parts[0])
-		val := strings.TrimSpace(parts[1])
-		if _, ok := matchers[key]; !ok {
-			continue
-		}
-
-		switch key {
-		case "queries":
-			g.QueryPath = []byte(val)
-		case "schema":
-			g.SchemaPath = []byte(val)
-		case "driver":
-			g.Driver = Driver(val)
-		}
-	}
-
-	if len(g.QueryPath) == 0 {
-		return fmt.Errorf("failed reading queries path")
-	}
-	if len(g.SchemaPath) == 0 {
-		return fmt.Errorf("failed reading schema path")
-	}
-	if g.Driver == "" {
-		return fmt.Errorf("failed reading sql driver")
-	}
-
-	// fmt.Printf("queries: %s\n", g.QueryPath)
-	// fmt.Printf("schema: %s\n", g.SchemaPath)
-	// fmt.Printf("driver: %s\n", g.Driver)
-
-	return nil
-}
-
-func (g *GeneratorBuilder) LoadConfig() error {
-	if !g.HasConfig() {
-		return fmt.Errorf("shogunc config file does not exists")
-	}
-
+func (g *Generator) loadConfig() error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
 	}
+	path := filepath.Join(cwd, "shogunc.yml")
 
-	configFile, err := os.ReadFile(fmt.Sprintf("%s/shogunc.yml", cwd))
+	configFile, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("[GENERATE] failed to read config file at %s: %w", path, err)
+	}
+
+	return g.parseConfig(configFile)
+}
+
+func (g *Generator) parseConfig(fileContents []byte) error {
+	var config ShogunConfig
+	if err := yaml.Unmarshal(fileContents, &config); err != nil {
+		return fmt.Errorf("[GENERATE] invalid config: %v", err)
+	}
+
+	if config.Sql.Queries == "" {
+		return fmt.Errorf("[GENERATE] failed reading queries path")
+	}
+	if config.Sql.Schema == "" {
+		return fmt.Errorf("[GENERATE] failed reading schema path")
+	}
+	if config.Sql.Driver == "" {
+		return fmt.Errorf("[GENERATE] failed reading sql driver")
+	}
+
+	g.Config.Sql.Queries = config.Sql.Queries
+	g.Config.Sql.Schema = config.Sql.Schema
+	g.Config.Sql.Driver = config.Sql.Driver
+
+	return nil
+}
+
+func (g *Generator) LoadSchema() error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	file := filepath.Join(cwd, string(g.Config.Sql.Schema))
+	fileContents, err := os.ReadFile(file)
 	if err != nil {
 		return err
 	}
 
-	g.ParseConfig(configFile)
+	lexer := sqlparser.NewLexer(string(fileContents))
+	ast := sqlparser.NewAst(lexer)
+	if err := ast.ParseSchema(); err != nil {
+		return err
+	}
+
+	for _, datatype := range ast.Statements {
+		switch t := datatype.(type) {
+		case *sqlparser.TableType:
+			if _, ok := g.Types[t.Name]; !ok {
+				g.Types[t.Name] = t
+			}
+		case *sqlparser.EnumType:
+			if _, ok := g.Types[t.Name]; !ok {
+				g.Types[t.Name] = t
+			}
+		default:
+			return errors.New("[GENERATE] load schema failed with invalid type")
+		}
+	}
 	return nil
 }
 
 // Read sql file / files
 // Look for special tag: --name: GetUserById :one
-func (g *GeneratorBuilder) LoadSqlFiles() error {
-	// cwd, err := os.Getwd()
-	// if err != nil {
-	// 	return err
-	// }
-	// directory := filepath.Join(cwd, string(g.QueryPath))
-	// TODO: remove this after testing
-	directory := fmt.Sprintf("../../%s", string(g.QueryPath))
+func (g Generator) LoadSqlFiles() error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	directory := filepath.Join(cwd, string(g.Config.Sql.Queries))
 	dirEntries, err := os.ReadDir(directory)
 	if err != nil {
 		return err
 	}
-	// fmt.Printf("DIR: %s\n", directory)
 
 	for _, entry := range dirEntries {
 		if entry.IsDir() {
@@ -168,46 +178,75 @@ func (g *GeneratorBuilder) LoadSqlFiles() error {
 		fullPath := filepath.Join(directory, entry.Name())
 		file, err := os.Open(fullPath)
 		if err != nil {
-			return fmt.Errorf("failed to open %s: %v", fullPath, err)
+			return fmt.Errorf("[GENERATE] failed to open %s: %v", fullPath, err)
 		}
 		defer file.Close()
 
-		if err := g.ParseSqlFile(file); err != nil {
-			return fmt.Errorf("failed to parse %s: %v", fullPath, err)
+		_, err = g.parseSqlFile(file)
+		if err != nil {
+			return fmt.Errorf("[GENERATE] failed to parse %s: %v", fullPath, err)
 		}
 	}
-
-	// g.listSqlQueries()
-
 	return nil
 }
 
-func (g *GeneratorBuilder) ParseSqlFile(file *os.File) error {
-	var queries []Query
-	scanner := bufio.NewScanner(file)
+func (g Generator) parseSqlFile(file *os.File) (string, error) {
+	var bytes strings.Builder
+	queryBlocks, err := g.extractSqlBlocks(file, file.Name())
+	if err != nil {
+		return "", err
+	}
 
-	// Shogunc Tag: -- name: GetUserById :one
-	re := regexp.MustCompile(`--\s*name:\s*(\w+)\s*:(\w+)`)
-	var current *Query
+	for _, qb := range queryBlocks {
+		lexer := sqlparser.NewLexer(qb.SQL)
+		ast := sqlparser.NewAst(lexer)
+		if err := ast.Parse(); err != nil {
+			return "", fmt.Errorf("[GENERATE] failed parsing %s: %w", qb.Name, err)
+		}
+
+		dataType := g.inferType(qb.SQL)
+		if dataType == nil {
+			return "", fmt.Errorf("[GENERATE] failed infering type for %s\n SQL: %s", qb.Name, qb.SQL)
+		}
+
+		// fmt.Printf("[GENERATE] data type in ParseSqlFile : %v\n\n", dataType)
+
+		funcGen := gogen.NewFuncGenerator([]byte(qb.Name), qb.Type, dataType)
+		for _, stmt := range ast.Statements {
+			code, err := funcGen.GenerateFunction(stmt)
+			if err != nil {
+				return "", err
+			}
+			bytes.WriteString(code + "\n")
+		}
+	}
+	return bytes.String(), nil
+}
+
+func (g Generator) extractSqlBlocks(file *os.File, fileName string) ([]QueryBlock, error) {
+	scanner := bufio.NewScanner(file)
+	tagReg := regexp.MustCompile(`--\s*name:\s*(\w+)\s*:(\w+)`) // -- name: GetUserById :one
+	var blocks []QueryBlock
+
+	var current *QueryBlock
 	var sqlBuilder strings.Builder
 
+	// TODO: clean this logic up
 	for scanner.Scan() {
 		line := scanner.Text()
-
 		// Match on shogunc tag
-		if matches := re.FindStringSubmatch(line); matches != nil {
+		if matches := tagReg.FindStringSubmatch(line); matches != nil {
 			if current != nil {
-				current.SQL = []byte(strings.TrimSpace(sqlBuilder.String()))
-				queries = append(queries, *current)
+				current.SQL = sqlBuilder.String()
+				blocks = append(blocks, *current)
 				sqlBuilder.Reset()
 			}
-
 			// Initialize Tag with name & type
-			current = &Query{
-				Name: []byte(matches[1]),
-				Type: Type(matches[2]),
+			current = &QueryBlock{
+				Name:     strings.ToUpper(matches[1][:1]) + matches[1][1:],
+				Type:     utils.Type(matches[2]),
+				Filename: fileName,
 			}
-			// Jump to next line (SQL statement)
 			continue
 		}
 
@@ -219,21 +258,24 @@ func (g *GeneratorBuilder) ParseSqlFile(file *os.File) error {
 
 	// Last SQL statement
 	if current != nil {
-		current.SQL = []byte(strings.TrimSpace(sqlBuilder.String()))
-		queries = append(queries, *current)
+		current.SQL = sqlBuilder.String()
+		blocks = append(blocks, *current)
 	}
 
 	if err := scanner.Err(); err != nil {
-		return err
+		return nil, err
 	}
 
-	g.Queries = append(g.Queries, queries...)
-
-	return nil
+	return blocks, nil
 }
 
-func (g GeneratorBuilder) listSqlQueries() {
-	for _, stmt := range g.Queries {
-		fmt.Printf("%s\n", string(stmt.SQL))
+func (g Generator) inferType(sql string) any {
+	tokens := strings.Fields(sql)
+	for _, k := range tokens {
+		key := strings.Trim(k, ";,()")
+		if datType, ok := g.Types[key]; ok {
+			return datType
+		}
 	}
+	return nil
 }

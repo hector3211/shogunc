@@ -7,39 +7,6 @@ import (
 	"strings"
 )
 
-type Node any
-
-type LogicalOp string
-
-const (
-	And     LogicalOp = "And"
-	Or      LogicalOp = "Or"
-	Illegal LogicalOp = ""
-)
-
-func toLogicOp(op string) LogicalOp {
-	switch op {
-	case "AND":
-		return And
-	case "OR":
-		return Or
-	default:
-		return Illegal
-	}
-}
-
-type ConditionOp string
-
-const (
-	EQUAL       ConditionOp = "="
-	NOTEQUAL    ConditionOp = "!="
-	LESSTHAN    ConditionOp = "<"
-	GREATERTHAN ConditionOp = ">"
-	BETWEEN     ConditionOp = "BETWEEN"
-	ISNULL      ConditionOp = "IS NULL"
-	NOTNULL     ConditionOp = "IS NOT NULL"
-)
-
 type Condition struct {
 	Left     []byte      // Column
 	Next     LogicalOp   // AND | OR | NOT
@@ -50,39 +17,21 @@ type Condition struct {
 type SelectStatement struct {
 	Fields     []string
 	Conditions []Condition
-	TableName  []byte
+	TableName  string
 	Distinct   bool
 	Limit      int
 	Offset     int
 }
 
 type InsertStatement struct {
-	TableName       []byte
+	TableName       string
 	Columns         [][]byte
 	Values          []int
 	ReturningFields [][]byte
 	InsertMode      []byte
 }
 
-type Ast struct {
-	l            *Lexer
-	Statements   []Node
-	currentToken Token
-	peekToken    Token
-}
-
-func NewAst(l *Lexer) *Ast {
-	return &Ast{
-		l: l,
-	}
-}
-
-func (a *Ast) NextToken() {
-	a.currentToken = a.peekToken
-	a.peekToken = a.l.NextToken()
-}
-
-func (a *Ast) Parse() (Node, error) {
+func (a *Ast) Parse() error {
 	a.NextToken()
 	a.NextToken()
 
@@ -90,13 +39,13 @@ func (a *Ast) Parse() (Node, error) {
 	case SELECT:
 		return a.parseSelect()
 	case INSERT:
-		return a.parserInsert()
+		return a.parseInsert()
 	default:
-		return nil, fmt.Errorf("unexpected token: %s", a.currentToken.Literal)
+		return fmt.Errorf("unexpected token: %s", a.currentToken.Literal)
 	}
 }
 
-func (a *Ast) parseSelect() (*SelectStatement, error) {
+func (a *Ast) parseSelect() error {
 	stmt := &SelectStatement{}
 	a.NextToken()
 
@@ -111,20 +60,20 @@ func (a *Ast) parseSelect() (*SelectStatement, error) {
 
 	// Parse FROM
 	if a.currentToken.Type != FROM {
-		return nil, fmt.Errorf("expected FROM got %s", a.currentToken.Literal)
+		return fmt.Errorf("expected FROM got %s", a.currentToken.Literal)
 	}
 	a.NextToken()
 
 	if a.currentToken.Type != IDENT {
-		return nil, fmt.Errorf("expected table name got %s", a.currentToken.Literal)
+		return fmt.Errorf("expected table name got %s", a.currentToken.Literal)
 	}
-	stmt.TableName = []byte(a.currentToken.Literal)
+	stmt.TableName = strings.ToLower(a.currentToken.Literal)
 	a.NextToken()
 
 	// Parse WHERE
-	if a.currentToken.Type != WHERE {
-		return nil, fmt.Errorf("expected WHERE got %s", a.currentToken.Literal)
-	}
+	// if a.currentToken.Type != WHERE {
+	// 	return fmt.Errorf("expected WHERE got %s", a.currentToken.Literal)
+	// }
 	a.NextToken()
 
 	var conditions []Condition
@@ -153,7 +102,7 @@ func (a *Ast) parseSelect() (*SelectStatement, error) {
 			a.NextToken()
 			val, err := strconv.Atoi(a.currentToken.Literal)
 			if err != nil {
-				return nil, fmt.Errorf("invalid bind param: %v", err)
+				return fmt.Errorf("invalid bind param: %v", err)
 			}
 			cond.Right = val
 		case STRING:
@@ -161,7 +110,7 @@ func (a *Ast) parseSelect() (*SelectStatement, error) {
 		case INT:
 			val, err := strconv.Atoi(a.currentToken.Literal)
 			if err != nil {
-				return nil, fmt.Errorf("invalid bind param: %v", err)
+				return fmt.Errorf("invalid bind param: %v", err)
 			}
 			cond.Right = val
 		}
@@ -178,7 +127,7 @@ func (a *Ast) parseSelect() (*SelectStatement, error) {
 		if a.currentToken.Type == INT {
 			val, err := strconv.Atoi(a.currentToken.Literal)
 			if err != nil {
-				return nil, fmt.Errorf("invalid bind param: %v", err)
+				return fmt.Errorf("invalid bind param: %v", err)
 			}
 			stmt.Limit = val
 			a.NextToken()
@@ -190,7 +139,7 @@ func (a *Ast) parseSelect() (*SelectStatement, error) {
 		if a.currentToken.Type == INT {
 			val, err := strconv.Atoi(a.currentToken.Literal)
 			if err != nil {
-				return nil, fmt.Errorf("invalid bind param: %v", err)
+				return fmt.Errorf("invalid bind param: %v", err)
 			}
 			stmt.Offset = val
 			a.NextToken()
@@ -199,17 +148,17 @@ func (a *Ast) parseSelect() (*SelectStatement, error) {
 	stmt.Conditions = conditions
 
 	a.Statements = append(a.Statements, stmt)
-	return stmt, nil
+	return nil
 }
 
-func (a *Ast) parserInsert() (*InsertStatement, error) {
+func (a *Ast) parseInsert() error {
 	stmt := &InsertStatement{}
 	a.NextToken()
 
 	// Parse Insert
 	for a.currentToken.Type != VALUES && a.currentToken.Type != EOF {
 		if a.currentToken.Type == IDENT {
-			stmt.TableName = []byte(a.currentToken.Literal)
+			stmt.TableName = a.currentToken.Literal
 		}
 		if a.currentToken.Type == LPAREN {
 			for a.currentToken.Type != RPAREN {
@@ -231,7 +180,7 @@ func (a *Ast) parserInsert() (*InsertStatement, error) {
 					a.NextToken()
 					val, err := strconv.Atoi(a.currentToken.Literal)
 					if err != nil {
-						return nil, fmt.Errorf("invalid bind param: %v", err)
+						return fmt.Errorf("invalid bind param: %v", err)
 					}
 					stmt.Values = append(stmt.Values, val)
 				}
@@ -250,7 +199,8 @@ func (a *Ast) parserInsert() (*InsertStatement, error) {
 		}
 	}
 
-	return stmt, nil
+	a.Statements = append(a.Statements, stmt)
+	return nil
 }
 
 func (a *Ast) String() string {

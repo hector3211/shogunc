@@ -2,6 +2,38 @@ package sqlparser
 
 import (
 	"strings"
+	"time"
+)
+
+type LogicalOp string
+
+const (
+	And     LogicalOp = "And"
+	Or      LogicalOp = "Or"
+	Illegal LogicalOp = ""
+)
+
+func toLogicOp(op string) LogicalOp {
+	switch op {
+	case "AND":
+		return And
+	case "OR":
+		return Or
+	default:
+		return Illegal
+	}
+}
+
+type ConditionOp string
+
+const (
+	EQUAL       ConditionOp = "="
+	NOTEQUAL    ConditionOp = "!="
+	LESSTHAN    ConditionOp = "<"
+	GREATERTHAN ConditionOp = ">"
+	BETWEEN     ConditionOp = "BETWEEN"
+	ISNULL      ConditionOp = "IS NULL"
+	NOTNULL     ConditionOp = "IS NOT NULL"
 )
 
 type TokenType string
@@ -9,13 +41,22 @@ type TokenType string
 const (
 	ILLEGAL TokenType = "ILLEGAL"
 	EOF     TokenType = "EOF"
-
-	STRING TokenType = "STRING"
+	STRING  TokenType = "STRING"
+	COMMENT TokenType = "COMMENT"
 
 	// Identifiers + Literals
-	IDENT TokenType = "IDENT" // foobar
-	INT   TokenType = "INT"   // 12345
-
+	IDENT     TokenType = "IDENT" // foobar
+	DEFAULT   TokenType = "DEFAULT"
+	UUID      TokenType = "UUID"
+	INT       TokenType = "INT" // 12345
+	BIGINT    TokenType = "BIGINT"
+	SMALLINT  TokenType = "SMALLINT"
+	DECIMAL   TokenType = "DECIMAL"
+	VARCHAR   TokenType = "VARCAHR"
+	TEXT      TokenType = "TEXT"
+	BOOLEAN   TokenType = "BOOLEAN"
+	TIMESTAMP TokenType = "TIMESTAMP"
+	DATE      TokenType = "DATE"
 	// Input Identifier
 	BINDPARAM   TokenType = "$"
 	PLACEHOLDER TokenType = "PLACEHOLDER"
@@ -54,12 +95,17 @@ const (
 	// Data Definition
 	CREATE   TokenType = "CREATE"
 	TABLE    TokenType = "TABLE"
+	TYPE     TokenType = "TYPE"
+	PRIMARY  TokenType = "PRIMARY"
+	KEY      TokenType = "KEY"
 	DATABASE TokenType = "DATABASE"
 	INDEX    TokenType = "INDEX"
 	VIEW     TokenType = "VIEW"
 	DROP     TokenType = "DROP"
 	ALTER    TokenType = "ALTER"
 	TRUNCATE TokenType = "TRUNCATE"
+	ENUM     TokenType = "ENUM"
+	UNIQUE   TokenType = "UNIQUE"
 
 	// Condition & Logical
 	AND    TokenType = "AND"
@@ -112,7 +158,11 @@ var keyWords = map[string]TokenType{
 	"SET":       SET,
 	"DELETE":    DELETE,
 	"CREATE":    CREATE,
+	"PRIMARY":   PRIMARY,
+	"UNIQUE":    UNIQUE,
+	"KEY":       KEY,
 	"TABLE":     TABLE,
+	"TYPE":      TYPE,
 	"DROP":      DROP,
 	"ALTER":     ALTER,
 	"ADD":       ADD,
@@ -147,12 +197,14 @@ var keyWords = map[string]TokenType{
 	"ELSE":      ELSE,
 	"END":       END,
 	"RETURNING": RETURNING,
+	"DEFAULT":   DEFAULT,
 }
 
 func LookupIdent(ident string) TokenType {
 	if tok, ok := keyWords[ident]; ok {
 		return tok
 	}
+
 	return IDENT
 }
 
@@ -179,5 +231,64 @@ func IsLogicalOperator(op string) bool {
 
 	default:
 		return false
+	}
+}
+
+var dbTypes = map[string]TokenType{
+	"UUID":      UUID,
+	"TEXT":      TEXT,
+	"VARCHAR":   VARCHAR,
+	"INT":       INT,
+	"BIGINT":    BIGINT,
+	"SMALLINT":  SMALLINT,
+	"DECIMAL":   DECIMAL,
+	"BOOLEAN":   BOOLEAN,
+	"TIMESTAMP": TIMESTAMP,
+	"DATE":      DATE,
+}
+
+func IsDatabaseType(t string) bool {
+	if _, ok := dbTypes[t]; ok {
+		return true
+	}
+	return false
+}
+
+func IsNowCompatible(tok Token) bool {
+	switch tok.Literal {
+	case "TIMESTAMP", "TIMESTAMPZ", "DATE", "TIME":
+		return true
+	default:
+		return false
+	}
+}
+
+func SqlNow(tok Token) string {
+	switch tok.Type {
+	case TIMESTAMP:
+		return time.Now().Format("2006-01-02 15:04:05")
+	case DATE:
+		return time.Now().Format("2006-01-02")
+	}
+
+	return time.Now().String()
+}
+
+func SqlToGoType(tok Token) string {
+	switch tok.Type {
+	case TEXT, VARCHAR, UUID:
+		return "string"
+	case INT, BIGINT, SMALLINT:
+		return "int"
+	case DECIMAL:
+		return "float64"
+	case BOOLEAN:
+		return "bool"
+	case TIMESTAMP, DATE:
+		return "time.Time"
+	case ENUM:
+		return tok.Literal
+	default:
+		return ""
 	}
 }

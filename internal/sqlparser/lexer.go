@@ -1,6 +1,7 @@
 package sqlparser
 
 import (
+	"strings"
 	"unicode"
 )
 
@@ -57,7 +58,8 @@ func (l *Lexer) NextToken() Token {
 			// fmt.Printf("Token STRING: %+v\n", tok)
 			return tok
 		} else if isLetter(l.ch) {
-			tok.Literal = l.readIdentifer()
+			// tok.Literal = l.readIdentifer()
+			tok.Literal = strings.ToUpper(l.readIdentifer())
 			tok.Type = LookupIdent(tok.Literal)
 			// fmt.Printf("Token CHAR: %+v\n", tok)
 			return tok
@@ -106,16 +108,17 @@ func isDigit(ch byte) bool {
 }
 
 func isString(ch byte) bool {
-	return ch == '\''
+	return ch == '\'' || ch == '"'
 }
 
 func (l *Lexer) readString() string {
+	quote := l.ch
 	l.ReadChar() // skip opening '
-	position := l.position
-	for l.ch != '\'' && l.ch != 0 {
+	start := l.position
+	for l.ch != quote && l.ch != 0 {
 		l.ReadChar()
 	}
-	str := l.input[position:l.position]
+	str := l.input[start:l.position]
 	l.ReadChar() // skip closing '
 	return str
 }

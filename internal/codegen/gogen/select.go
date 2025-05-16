@@ -2,25 +2,25 @@ package gogen
 
 import (
 	"fmt"
-	"shogunc/cmd/generate"
 	"shogunc/internal/sqlparser"
+	"shogunc/utils"
 	"strings"
 )
 
-func GenerateSelectFunction(tagType generate.Type, query *sqlparser.SelectStatement) string {
+func generateSelectFunction(tagType utils.Type, query *sqlparser.SelectStatement) string {
 	switch tagType {
-	case generate.ONE:
-		return GenerateSelectOne(query)
-	case generate.MANY:
+	case utils.ONE:
+		return generateSelectOne(query)
+	case utils.MANY:
 		return ""
-	case generate.EXEC:
+	case utils.EXEC:
 		return ""
 	default:
 		return ""
 	}
 }
 
-func GenerateSelectOne(query *sqlparser.SelectStatement) string {
+func generateSelectOne(query *sqlparser.SelectStatement) string {
 	var sb strings.Builder
 	sb.WriteString("query := ")
 
@@ -29,7 +29,8 @@ func GenerateSelectOne(query *sqlparser.SelectStatement) string {
 	} else {
 		sb.WriteString("Select(")
 		for idx, f := range query.Fields {
-			sb.WriteString(f)
+			// Note: Field names come from the lexer capitalized
+			sb.WriteString(fmt.Sprintf("\"%s\"", strings.ToLower(f)))
 
 			if idx < len(query.Fields)-1 {
 				sb.WriteString(",")
@@ -38,7 +39,7 @@ func GenerateSelectOne(query *sqlparser.SelectStatement) string {
 		sb.WriteString(")")
 	}
 
-	sb.WriteString(fmt.Sprintf(".From(%s)", query.TableName))
+	sb.WriteString(fmt.Sprintf(".From(\"%s\")", query.TableName))
 
 	sb.WriteString(".Where(")
 	for idx, c := range query.Conditions {
@@ -84,24 +85,33 @@ func shoguncConditionalOp(cond sqlparser.Condition) string {
 
 func shoguncEqualOp(cond sqlparser.Condition) string {
 	strB := strings.Builder{}
-	strB.WriteString(fmt.Sprintf("Equal(%s, %v)", string(cond.Left), cond.Right))
+	strB.WriteString(fmt.Sprintf("Equal(\"%s\", %v)", string(cond.Left), formatType(cond.Right)))
 	return strB.String()
 }
 
 func shoguncNotEqualOp(cond sqlparser.Condition) string {
 	strB := strings.Builder{}
-	strB.WriteString(fmt.Sprintf("NotEqual(%s, %v)", string(cond.Left), cond.Right))
+	strB.WriteString(fmt.Sprintf("NotEqual(\"%s\", %v)", string(cond.Left), formatType(cond.Right)))
 	return strB.String()
 }
 
 func shoguncLessThanOp(cond sqlparser.Condition) string {
 	strB := strings.Builder{}
-	strB.WriteString(fmt.Sprintf("LessThan(%s, %v)", string(cond.Left), cond.Right))
+	strB.WriteString(fmt.Sprintf("LessThan(\"%s\", %v)", string(cond.Left), formatType(cond.Right)))
 	return strB.String()
 }
 
 func shoguncGreaterThanOp(cond sqlparser.Condition) string {
 	strB := strings.Builder{}
-	strB.WriteString(fmt.Sprintf("GreaterThan(%s, %v)", string(cond.Left), cond.Right))
+	strB.WriteString(fmt.Sprintf("GreaterThan(\"%s\", %s)", string(cond.Left), formatType(cond.Right)))
 	return strB.String()
+}
+
+func formatType(v any) string {
+	switch v.(type) {
+	case string:
+		return fmt.Sprintf(`"%s"`, v)
+	default:
+		return fmt.Sprintf("%v", v)
+	}
 }

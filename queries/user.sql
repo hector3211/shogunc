@@ -1,16 +1,3 @@
--- name: CreateUser :exec
-INSERT INTO users (
-    clerk_id,
-    first_name,
-    last_name,
-    email,
-    phone,
-    role,
-    updated_at
-) VALUES (
-    $1, $2, $3, $4, $5, $6, now()
-) RETURNING id, clerk_id, first_name, last_name, email, phone, role, created_at;
-
 -- name: GetUser :one
 SELECT id, first_name, last_name, email, phone, role, created_at
 FROM users

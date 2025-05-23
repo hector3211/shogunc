@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-func GenerateEnumType(enumType sqlparser.EnumType) (string, error) {
+func GenerateEnumType(enumType *sqlparser.EnumType) (string, error) {
 	var strBuilder strings.Builder
 
 	strBuilder.WriteString(fmt.Sprintf("type %s string\n\n", enumType.Name))
@@ -22,14 +22,14 @@ func GenerateEnumType(enumType sqlparser.EnumType) (string, error) {
 	return strBuilder.String(), nil
 }
 
-func GenerateTableType(tableType sqlparser.TableType) (string, error) {
+func GenerateTableType(tableType *sqlparser.TableType) (string, error) {
 	var strBuilder strings.Builder
 
-	strBuilder.WriteString(fmt.Sprintf("type %s struct {\n", tableType.Name))
+	strBuilder.WriteString(fmt.Sprintf("type %s struct {\n", strings.ToUpper(tableType.Name[:1])+tableType.Name[1:]))
 	for _, f := range tableType.Fields {
 		goDataType := sqlparser.SqlToGoType(f.DataType)
 		if goDataType == "" {
-			return "", fmt.Errorf("[BUILDER] failed parsing %s to GO type", f.DataType.Literal)
+			return "", fmt.Errorf("[BUILDER] failed parsing %s %v to GO type", f.DataType.Literal, f.DataType.Type)
 		}
 
 		fieldType := goDataType

@@ -143,6 +143,8 @@ func (g *Generator) LoadSchema() error {
 		return err
 	}
 
+	var genContent strings.Builder
+
 	for _, datatype := range ast.Statements {
 		switch t := datatype.(type) {
 		case *sqlparser.TableType:
@@ -150,31 +152,35 @@ func (g *Generator) LoadSchema() error {
 				g.Types[t.Name] = t
 			}
 
-			content, err := gogen.GenerateTableType(*t)
+			content, err := gogen.GenerateTableType(t)
 			if err != nil {
-				return errors.New("[GENERATE] failed generating table type")
+				return fmt.Errorf("[GENERATE] failed generating table type %v", err)
 			}
 
-			if err = os.WriteFile(g.Config.Sql.Output, []byte(content), 0666); err != nil {
-				return fmt.Errorf("[GENERATE] failed writing table type to file; path: %s", g.Config.Sql.Output)
-			}
+			genContent.WriteString(content)
+			genContent.WriteString("\n")
+
 		case *sqlparser.EnumType:
 			if _, ok := g.Types[t.Name]; !ok {
 				g.Types[t.Name] = t
 			}
-			content, err := gogen.GenerateEnumType(*t)
+			content, err := gogen.GenerateEnumType(t)
 			if err != nil {
-				return errors.New("[GENERATE] failed generating enum type")
+				return fmt.Errorf("[GENERATE] failed generating enum type %v", err)
 			}
 
-			if err = os.WriteFile(g.Config.Sql.Output, []byte(content), 0666); err != nil {
-				return fmt.Errorf("[GENERATE] failed writing enum type to file; path %s", g.Config.Sql.Output)
-			}
+			genContent.WriteString(content)
+			genContent.WriteString("\n")
 		default:
 			return errors.New("[GENERATE] load schema failed with invalid type")
 		}
 	}
 
+	// fmt.Printf("contents being written: %s", &genContent)
+
+	if err = os.WriteFile(g.Config.Sql.Output, []byte(genContent.String()), 0666); err != nil {
+		return fmt.Errorf("[GENERATE] failed writing to file; path: %s error: %v", g.Config.Sql.Output, err)
+	}
 	return nil
 }
 
@@ -241,6 +247,7 @@ func (g Generator) parseSqlFile(file *os.File) error {
 				return err
 			}
 
+			// TODO: This is currently not working
 			if err = os.WriteFile(g.Config.Sql.Output, []byte(code+"\n"), 0666); err != nil {
 				return errors.New("[GENERATE] failed writing gogen code to file")
 			}

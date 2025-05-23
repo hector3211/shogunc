@@ -142,7 +142,7 @@ func TestTableTypeGenerator(t *testing.T) {
 		},
 	}
 
-	got, err := GenerateTableType(*table)
+	got, err := GenerateTableType(table)
 	if err != nil {
 		t.Fatalf("generating table type failed: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestEnumTypeGenerator(t *testing.T) {
 		Values: []string{"active", "inactive", "banned"},
 	}
 
-	got, err := GenerateEnumType(*enum)
+	got, err := GenerateEnumType(enum)
 	if err != nil {
 		t.Fatalf("generating enum type failed: %v", err)
 	}

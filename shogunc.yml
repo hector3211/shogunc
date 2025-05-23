@@ -2,7 +2,7 @@ sql:
   schema: schema.sql
   queries: queries
   driver: sqlite3
-  output: tmp/generated.sql.go
+  output: /tmp/generated.sql.go
 #   gen:
 #     go:
 #       package: "authors"

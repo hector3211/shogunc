@@ -30,11 +30,13 @@ func TestLoadConfig(t *testing.T) {
 }
 
 func TestParseSqlFile(t *testing.T) {
+	outputPath := filepath.Join("/tmp", "generated.sql.go")
+
 	gen := NewGenerator()
 	gen.Config.Sql.Schema = "../../schema.sql"
 	gen.Config.Sql.Queries = "../../queries"
 	gen.Config.Sql.Driver = SQLITE
-	gen.Config.Sql.Output = "tmp/generated.sql.go"
+	gen.Config.Sql.Output = outputPath
 
 	err := gen.LoadSchema()
 	if err != nil {
@@ -45,14 +47,33 @@ func TestParseSqlFile(t *testing.T) {
 		t.Fatalf("[GENERATE_TEST] expected type Users to be loaded from schema")
 	}
 
+	contents, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(string(contents), "type Users") {
+		t.Fatalf("[GENERATE_TEST] generated file has no type User\n contents: %s\n\npath: %s", contents, outputPath)
+	}
+
 	file, err := os.Open("../../queries/user.sql")
 	if err != nil {
 		t.Fatalf("[GENERATE_TEST] ParseSqlFile failed: %v", err)
 	}
+	defer file.Close()
 
 	err = gen.parseSqlFile(file)
 	if err != nil {
 		t.Fatalf("[GENERATE_TEST] ParseSqlFile failed: %v", err)
+	}
+
+	contentsGenFuncs, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(string(contentsGenFuncs), "func GetUser(ctx context.Context) Users") {
+		t.Fatalf("[GENERATE_TEST] generated file has no func\n contents: %s", contents)
 	}
 }
 
@@ -68,8 +89,8 @@ func TestParseConfig(t *testing.T) {
 	if string(gen.Config.Sql.Schema) != "schema.sql" {
 		t.Errorf("Expected schema path 'schema.sql', got '%s'", gen.Config.Sql.Schema)
 	}
-	if string(gen.Config.Sql.Output) != "tmp/generated.sql.go" {
-		t.Errorf("Expected output path 'tmp/generated.sql.go', got '%s'", gen.Config.Sql.Output)
+	if string(gen.Config.Sql.Output) != "/tmp/generated.sql.go" {
+		t.Errorf("Expected output path '/tmp/generated.sql.go', got '%s'", gen.Config.Sql.Output)
 	}
 	if gen.Config.Sql.Driver != SQLITE {
 		t.Errorf("Expected driver sqlite3, got %s", gen.Config.Sql.Driver)

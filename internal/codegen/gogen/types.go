@@ -47,7 +47,7 @@ func GenerateTableType(tableType sqlparser.TableType) (string, error) {
 	return strBuilder.String(), nil
 }
 
-func GenreateInsertTableType(tableType sqlparser.TableType) (string, error) {
+func GenreateInsertTableType(tableType *sqlparser.TableType) (string, error) {
 	var strBuilder strings.Builder
 	strBuilder.WriteString(fmt.Sprintf("type New%s struct {\n", tableType.Name))
 	for _, f := range tableType.Fields {

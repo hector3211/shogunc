@@ -1,7 +1,8 @@
 sql:
-  schema: /schema.sql
-  queries: /queries
-  driver: postgresql
+  schema: schema.sql
+  queries: queries
+  driver: sqlite3
+  output: tmp/generated.sql.go
 #   gen:
 #     go:
 #       package: "authors"

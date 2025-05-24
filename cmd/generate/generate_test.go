@@ -75,6 +75,14 @@ func TestParseSqlFile(t *testing.T) {
 	if !strings.Contains(string(contentsGenFuncs), "func GetUser(ctx context.Context) Users") {
 		t.Fatalf("[GENERATE_TEST] generated file has no func\n contents: %s", contents)
 	}
+
+	if !strings.Contains(string(contentsGenFuncs), "func GetUserByClerkId(ctx context.Context) Users") {
+		t.Fatalf("[GENERATE_TEST] generated file has no func\n contents: %s", contents)
+	}
+
+	if !strings.Contains(string(contentsGenFuncs), "func GetUserByClerkIdTwo(ctx context.Context) Users") {
+		t.Fatalf("[GENERATE_TEST] generated file has no func\n contents: %s", contents)
+	}
 }
 
 func TestParseConfig(t *testing.T) {

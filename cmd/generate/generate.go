@@ -178,6 +178,9 @@ func (g *Generator) LoadSchema() error {
 
 	// fmt.Printf("contents being written: %s", &genContent)
 
+	if genContent.String() == "" {
+		return errors.New("[GENERATE] failed geenrating SQL types")
+	}
 	if err = os.WriteFile(g.Config.Sql.Output, []byte(genContent.String()), 0666); err != nil {
 		return fmt.Errorf("[GENERATE] failed writing to file; path: %s error: %v", g.Config.Sql.Output, err)
 	}
@@ -226,6 +229,7 @@ func (g Generator) parseSqlFile(file *os.File) error {
 		return err
 	}
 
+	var genContent strings.Builder
 	for _, qb := range queryBlocks {
 		lexer := sqlparser.NewLexer(qb.SQL)
 		ast := sqlparser.NewAst(lexer)
@@ -246,12 +250,16 @@ func (g Generator) parseSqlFile(file *os.File) error {
 			if err != nil {
 				return err
 			}
-
-			// TODO: This is currently not working
-			if err = os.WriteFile(g.Config.Sql.Output, []byte(code+"\n"), 0666); err != nil {
-				return errors.New("[GENERATE] failed writing gogen code to file")
-			}
+			// fmt.Printf("statement: %s\n", code)
+			genContent.WriteString(code + "\n")
 		}
+	}
+	if genContent.String() == "" {
+		return errors.New("[GENERATE] failed generating code")
+	}
+
+	if err = os.WriteFile(g.Config.Sql.Output, []byte(genContent.String()+"\n"), 0666); err != nil {
+		return errors.New("[GENERATE] failed writing gogen code to file")
 	}
 	return nil
 }

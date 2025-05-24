@@ -15,7 +15,7 @@ func GenerateEnumType(enumType *sqlparser.EnumType) (string, error) {
 
 	for _, v := range enumType.Values {
 		value := utils.ToPascalCase(v)
-		strBuilder.WriteString(fmt.Sprintf("\t%s %s = \"%s\"\n", value, enumType.Name, v))
+		strBuilder.WriteString(fmt.Sprintf("\t%s %s = %q\n", value, enumType.Name, v))
 	}
 
 	strBuilder.WriteString(")\n")
@@ -38,7 +38,7 @@ func GenerateTableType(tableType *sqlparser.TableType) (string, error) {
 		}
 
 		fieldName := utils.ToPascalCase(f.Name)
-		jsonTag := fmt.Sprintf("`db:\"%s\"`", f.Name)
+		jsonTag := fmt.Sprintf("`db:%q`", f.Name)
 
 		strBuilder.WriteString(fmt.Sprintf("\t%s %s %s\n", fieldName, fieldType, jsonTag))
 	}
@@ -62,7 +62,7 @@ func GenreateInsertTableType(tableType *sqlparser.TableType) (string, error) {
 		}
 
 		fieldName := utils.ToPascalCase(f.Name)
-		jsonTag := fmt.Sprintf("`db:\"%s\"`", f.Name)
+		jsonTag := fmt.Sprintf("`db:%q`", f.Name)
 
 		strBuilder.WriteString(fmt.Sprintf("\t%s %s %s\n", fieldName, fieldType, jsonTag))
 	}

@@ -57,7 +57,7 @@ func NewGenerator() *Generator {
 			},
 		},
 		Types:   make(map[string]any),
-		Imports: []string{"context"},
+		Imports: []string{},
 	}
 }
 
@@ -144,6 +144,13 @@ func (g *Generator) LoadSchema() error {
 	}
 
 	var genContent strings.Builder
+	// TODO: package name needed
+	genContent.WriteString(`import (\n`)
+	for _, pkg := range g.Imports {
+		genContent.WriteString(fmt.Sprintf("\t%q", pkg))
+		genContent.WriteString("\n")
+	}
+	genContent.WriteString(")")
 
 	for _, datatype := range ast.Statements {
 		switch t := datatype.(type) {
@@ -181,6 +188,7 @@ func (g *Generator) LoadSchema() error {
 	if genContent.String() == "" {
 		return errors.New("[GENERATE] failed geenrating SQL types")
 	}
+
 	if err = os.WriteFile(g.Config.Sql.Output, []byte(genContent.String()), 0666); err != nil {
 		return fmt.Errorf("[GENERATE] failed writing to file; path: %s error: %v", g.Config.Sql.Output, err)
 	}
@@ -272,7 +280,6 @@ func (g Generator) extractSqlBlocks(file *os.File, fileName string) ([]QueryBloc
 	var current *QueryBlock
 	var sqlBuilder strings.Builder
 
-	// TODO: clean this logic up
 	for scanner.Scan() {
 		line := scanner.Text()
 		// Match on shogunc tag
@@ -308,6 +315,52 @@ func (g Generator) extractSqlBlocks(file *os.File, fileName string) ([]QueryBloc
 	}
 
 	return blocks, nil
+}
+
+func (g *Generator) addImport(pkg string) error {
+	g.Imports = append(g.Imports, pkg)
+	fileBytes, err := os.ReadFile(g.Config.Sql.Output)
+	if err != nil {
+		return err
+	}
+
+	lines := strings.Split(string(fileBytes), "\n")
+	var (
+		newLines        []string
+		inImportBlock   bool
+		alreadyImported bool
+	)
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		if strings.HasPrefix(trimmed, "import") {
+			inImportBlock = true
+			newLines = append(newLines, line)
+			continue
+		}
+
+		if inImportBlock && trimmed == ")" {
+			if !alreadyImported {
+				newLines = append(newLines, fmt.Sprintf("\t%q", pkg))
+			}
+			inImportBlock = false
+			newLines = append(newLines, line)
+		}
+
+		if inImportBlock && trimmed == fmt.Sprintf("%q", pkg) {
+			alreadyImported = true
+		}
+
+		newLines = append(newLines, trimmed)
+	}
+
+	ctnt := strings.Join(newLines, "\n")
+
+	if err := os.WriteFile(g.Config.Sql.Output, []byte(ctnt), 0666); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (g Generator) inferType(sql string) any {

@@ -30,7 +30,7 @@ func generateSelectOne(query *sqlparser.SelectStatement) string {
 		sb.WriteString("Select(")
 		for idx, f := range query.Fields {
 			// Note: Field names come from the lexer capitalized
-			sb.WriteString(fmt.Sprintf("\"%s\"", strings.ToLower(f)))
+			sb.WriteString(fmt.Sprintf("%q", strings.ToLower(f)))
 
 			if idx < len(query.Fields)-1 {
 				sb.WriteString(",")
@@ -39,7 +39,7 @@ func generateSelectOne(query *sqlparser.SelectStatement) string {
 		sb.WriteString(")")
 	}
 
-	sb.WriteString(fmt.Sprintf(".From(\"%s\")", query.TableName))
+	sb.WriteString(fmt.Sprintf(".From(%q)", query.TableName))
 
 	sb.WriteString(".Where(")
 	for idx, c := range query.Conditions {
@@ -85,32 +85,32 @@ func shoguncConditionalOp(cond sqlparser.Condition) string {
 
 func shoguncEqualOp(cond sqlparser.Condition) string {
 	strB := strings.Builder{}
-	strB.WriteString(fmt.Sprintf("Equal(\"%s\", %v)", string(cond.Left), formatType(cond.Right)))
+	strB.WriteString(fmt.Sprintf("Equal(%q, %v)", string(cond.Left), formatType(cond.Right)))
 	return strB.String()
 }
 
 func shoguncNotEqualOp(cond sqlparser.Condition) string {
 	strB := strings.Builder{}
-	strB.WriteString(fmt.Sprintf("NotEqual(\"%s\", %v)", string(cond.Left), formatType(cond.Right)))
+	strB.WriteString(fmt.Sprintf("NotEqual(%q, %v)", string(cond.Left), formatType(cond.Right)))
 	return strB.String()
 }
 
 func shoguncLessThanOp(cond sqlparser.Condition) string {
 	strB := strings.Builder{}
-	strB.WriteString(fmt.Sprintf("LessThan(\"%s\", %v)", string(cond.Left), formatType(cond.Right)))
+	strB.WriteString(fmt.Sprintf("LessThan(%q, %v)", string(cond.Left), formatType(cond.Right)))
 	return strB.String()
 }
 
 func shoguncGreaterThanOp(cond sqlparser.Condition) string {
 	strB := strings.Builder{}
-	strB.WriteString(fmt.Sprintf("GreaterThan(\"%s\", %s)", string(cond.Left), formatType(cond.Right)))
+	strB.WriteString(fmt.Sprintf("GreaterThan(%q, %s)", string(cond.Left), formatType(cond.Right)))
 	return strB.String()
 }
 
 func formatType(v any) string {
 	switch v.(type) {
 	case string:
-		return fmt.Sprintf(`"%s"`, v)
+		return fmt.Sprintf("%q", v)
 	default:
 		return fmt.Sprintf("%v", v)
 	}

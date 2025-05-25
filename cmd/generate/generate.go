@@ -47,13 +47,18 @@ type Generator struct {
 }
 
 func NewGenerator() *Generator {
+	// cwd, err := os.Getwd()
+	// if err != nil {
+	// 	return err
+	// }
 	return &Generator{
 		Config: ShogunConfig{
 			Sql: SqlConfig{
 				Queries: "",
 				Schema:  "",
 				Driver:  "",
-				Output:  "../../tmp/generated.sql.go",
+				// Output:  fmt.Sprintf("%s/generated.sql.go",cwd),
+				Output: "../../tmp/generated.sql.go",
 			},
 		},
 		Types:   make(map[string]any),
@@ -150,7 +155,7 @@ func (g *Generator) LoadSchema() error {
 		genContent.WriteString(fmt.Sprintf("\t%q", pkg))
 		genContent.WriteString("\n")
 	}
-	genContent.WriteString(")")
+	genContent.WriteString(")\n")
 
 	for _, datatype := range ast.Statements {
 		switch t := datatype.(type) {
@@ -164,8 +169,7 @@ func (g *Generator) LoadSchema() error {
 				return fmt.Errorf("[GENERATE] failed generating table type %v", err)
 			}
 
-			genContent.WriteString(content)
-			genContent.WriteString("\n")
+			genContent.WriteString(content + "\n")
 
 		case *sqlparser.EnumType:
 			if _, ok := g.Types[t.Name]; !ok {
@@ -176,8 +180,7 @@ func (g *Generator) LoadSchema() error {
 				return fmt.Errorf("[GENERATE] failed generating enum type %v", err)
 			}
 
-			genContent.WriteString(content)
-			genContent.WriteString("\n")
+			genContent.WriteString(content + "\n")
 		default:
 			return errors.New("[GENERATE] load schema failed with invalid type")
 		}
@@ -195,8 +198,6 @@ func (g *Generator) LoadSchema() error {
 	return nil
 }
 
-// Read sql file / files
-// Look for special tag: --name: GetUserById :one
 func (g Generator) LoadSqlFiles() error {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -250,15 +251,12 @@ func (g Generator) parseSqlFile(file *os.File) error {
 			return fmt.Errorf("[GENERATE] failed infering type for %s\n SQL: %s", qb.Name, qb.SQL)
 		}
 
-		// fmt.Printf("[GENERATE] data type in ParseSqlFile : %v\n\n", dataType)
-
 		funcGen := gogen.NewFuncGenerator([]byte(qb.Name), qb.Type, dataType)
 		for _, stmt := range ast.Statements {
 			code, err := funcGen.GenerateFunction(stmt)
 			if err != nil {
 				return err
 			}
-			// fmt.Printf("statement: %s\n", code)
 			genContent.WriteString(code + "\n")
 		}
 	}
@@ -325,11 +323,9 @@ func (g *Generator) addImport(pkg string) error {
 	}
 
 	lines := strings.Split(string(fileBytes), "\n")
-	var (
-		newLines        []string
-		inImportBlock   bool
-		alreadyImported bool
-	)
+	var newLines []string
+	var inImportBlock bool
+	var alreadyImported bool
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 
@@ -354,9 +350,8 @@ func (g *Generator) addImport(pkg string) error {
 		newLines = append(newLines, trimmed)
 	}
 
-	ctnt := strings.Join(newLines, "\n")
-
-	if err := os.WriteFile(g.Config.Sql.Output, []byte(ctnt), 0666); err != nil {
+	updatedFileContents := strings.Join(newLines, "\n")
+	if err := os.WriteFile(g.Config.Sql.Output, []byte(updatedFileContents), 0666); err != nil {
 		return err
 	}
 

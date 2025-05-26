@@ -2,6 +2,7 @@ package generate
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"shogunc/internal/sqlparser"
 	"shogunc/utils"
 	"strings"
+	"sync"
 
 	"gopkg.in/yaml.v3"
 )
@@ -41,16 +43,15 @@ type ShogunConfig struct {
 }
 
 type Generator struct {
-	Config  ShogunConfig
-	Types   map[string]any
-	Imports []string
+	Config      ShogunConfig
+	Types       map[string]any
+	Imports     []string
+	tagRegex    *regexp.Regexp
+	outputCache *bytes.Buffer
+	mu          sync.RWMutex
 }
 
 func NewGenerator() *Generator {
-	// cwd, err := os.Getwd()
-	// if err != nil {
-	// 	return err
-	// }
 	return &Generator{
 		Config: ShogunConfig{
 			Sql: SqlConfig{
@@ -61,8 +62,10 @@ func NewGenerator() *Generator {
 				Output: "../../tmp/generated.sql.go",
 			},
 		},
-		Types:   make(map[string]any),
-		Imports: []string{},
+		Types:       make(map[string]any),
+		Imports:     make([]string, 0),
+		tagRegex:    regexp.MustCompile(`--\s*name:\s*(\w+)\s*:(\w+)`),
+		outputCache: &bytes.Buffer{},
 	}
 }
 
@@ -78,26 +81,32 @@ func (g *Generator) Execute() error {
 	if err := g.loadConfig(); err != nil {
 		return err
 	}
-	return nil
+
+	errCh := make(chan error, 2)
+
+	go func() {
+		errCh <- g.LoadSchema()
+	}()
+
+	go func() {
+		errCh <- g.LoadSqlFiles()
+	}()
+
+	for i := 0; i < 2; i++ {
+		if err := <-errCh; err != nil {
+			return err
+		}
+	}
+
+	return g.writeOutput()
 }
 
-func (g Generator) hasConfig() bool {
-	// cwd, err := os.Getwd()
-	// if err != nil {
-	// 	return false
-	// }
-
-	// _, err = os.ReadFile(fmt.Sprintf("%s/shogunc.yml", cwd))
+func (g *Generator) hasConfig() bool {
 	_, err := os.ReadFile("../../shogunc.yml")
-
 	return err == nil
 }
 
 func (g *Generator) loadConfig() error {
-	// cwd, err := os.Getwd()
-	// if err != nil {
-	// 	return err
-	// }
 	path := filepath.Join("../../", "shogunc.yml")
 
 	configFile, err := os.ReadFile(path)
@@ -123,20 +132,11 @@ func (g *Generator) loadConfig() error {
 		return errors.New("[GENERATE] failed reading sql config output")
 	}
 
-	g.Config.Sql.Queries = config.Sql.Queries
-	g.Config.Sql.Schema = config.Sql.Schema
-	g.Config.Sql.Driver = config.Sql.Driver
-	g.Config.Sql.Output = config.Sql.Output
-
+	g.Config.Sql = config.Sql
 	return nil
 }
 
 func (g *Generator) LoadSchema() error {
-	// cwd, err := os.Getwd()
-	// if err != nil {
-	// 	return err
-	// }
-	// file := filepath.Join("../..", string(g.Config.Sql.Schema))
 	fileContents, err := os.ReadFile(g.Config.Sql.Schema)
 	if err != nil {
 		return err
@@ -148,57 +148,64 @@ func (g *Generator) LoadSchema() error {
 		return err
 	}
 
-	var genContent strings.Builder
-	// TODO: package name needed
+	var genContent bytes.Buffer
 	genContent.WriteString(`import (\n`)
 	for _, pkg := range g.Imports {
-		genContent.WriteString(fmt.Sprintf("\t%q", pkg))
-		genContent.WriteString("\n")
+		genContent.WriteString(fmt.Sprintf("\t%q\n", pkg))
 	}
 	genContent.WriteString(")\n")
 
 	for _, datatype := range ast.Statements {
-		switch t := datatype.(type) {
-		case *sqlparser.TableType:
-			if _, ok := g.Types[t.Name]; !ok {
-				g.Types[t.Name] = t
-			}
-
-			content, err := gogen.GenerateTableType(t)
-			if err != nil {
-				return fmt.Errorf("[GENERATE] failed generating table type %v", err)
-			}
-
-			genContent.WriteString(content + "\n")
-
-		case *sqlparser.EnumType:
-			if _, ok := g.Types[t.Name]; !ok {
-				g.Types[t.Name] = t
-			}
-			content, err := gogen.GenerateEnumType(t)
-			if err != nil {
-				return fmt.Errorf("[GENERATE] failed generating enum type %v", err)
-			}
-
-			genContent.WriteString(content + "\n")
-		default:
-			return errors.New("[GENERATE] load schema failed with invalid type")
+		if err := g.parseStatement(datatype, &genContent); err != nil {
+			return err
 		}
 	}
 
-	// fmt.Printf("contents being written: %s", &genContent)
-
-	if genContent.String() == "" {
-		return errors.New("[GENERATE] failed geenrating SQL types")
+	if genContent.Len() == 0 {
+		return errors.New("[GENERATE] failed generating SQL types")
 	}
 
-	if err = os.WriteFile(g.Config.Sql.Output, []byte(genContent.String()), 0666); err != nil {
-		return fmt.Errorf("[GENERATE] failed writing to file; path: %s error: %v", g.Config.Sql.Output, err)
-	}
+	g.mu.Lock()
+	g.outputCache.Write(genContent.Bytes())
+	g.mu.Unlock()
+
 	return nil
 }
 
-func (g Generator) LoadSqlFiles() error {
+func (g *Generator) parseStatement(dataType any, genContent *bytes.Buffer) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	switch t := dataType.(type) {
+	case *sqlparser.TableType:
+		if _, ok := g.Types[t.Name]; !ok {
+			g.Types[t.Name] = t
+		}
+
+		content, err := gogen.GenerateTableType(t)
+		if err != nil {
+			return fmt.Errorf("[GENERATE] failed generating table type %v", err)
+		}
+
+		genContent.WriteString(content + "\n")
+
+	case *sqlparser.EnumType:
+		if _, ok := g.Types[t.Name]; !ok {
+			g.Types[t.Name] = t
+		}
+		content, err := gogen.GenerateEnumType(t)
+		if err != nil {
+			return fmt.Errorf("[GENERATE] failed generating enum type %v", err)
+		}
+
+		genContent.WriteString(content + "\n")
+	default:
+		return errors.New("[GENERATE] load schema failed with invalid type")
+	}
+
+	return nil
+}
+
+func (g *Generator) LoadSqlFiles() error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
@@ -209,6 +216,17 @@ func (g Generator) LoadSqlFiles() error {
 		return err
 	}
 
+	//TODO: finish this
+	//    	const maxWorkers = 4
+	// fileCh := make(chan string, len(dirEntries))
+	// resultCh := make(chan string, len(dirEntries))
+	// errCh := make(chan error, len(dirEntries))
+	//
+	//    var wg sync.WaitGroup
+	//    for i := 0; i < maxWorkers; i++ {
+	//        wg.Add(1)
+	//
+	//    }
 	for _, entry := range dirEntries {
 		if entry.IsDir() {
 			continue // Skip directories

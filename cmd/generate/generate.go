@@ -30,9 +30,14 @@ type QueryBlock struct {
 	Filename string // for debug or error reporting
 }
 
+// schema: schema.sql
+// queries: queries
+// driver: sqlite3
+// output: /tmp/generated.sql.go
+
 type SqlConfig struct {
-	Queries string `yaml:"queries"`
 	Schema  string `yaml:"schema"`
+	Queries string `yaml:"queries"`
 	Driver  Driver `yaml:"driver"`
 	Output  string `yaml:"output,omitempty"`
 }
@@ -67,17 +72,12 @@ func NewGenerator() *Generator {
 	}
 }
 
-func (g *Generator) Execute() error {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return err
+func (g *Generator) Execute(cwd string) error {
+	if !g.hasConfig(cwd) {
+		return fmt.Errorf("no shogunc.yml exists CWD: %s", cwd)
 	}
 
-	if !g.hasConfig() {
-		return fmt.Errorf("shogunc config file does not exists CWD: %s", cwd)
-	}
-
-	if err := g.loadConfig(); err != nil {
+	if err := g.loadConfig(cwd); err != nil {
 		return err
 	}
 
@@ -92,13 +92,13 @@ func (g *Generator) Execute() error {
 	return g.writeOutput()
 }
 
-func (g Generator) hasConfig() bool {
-	_, err := os.ReadFile("../../shogunc.yml")
+func (g Generator) hasConfig(cwd string) bool {
+	_, err := os.ReadFile(filepath.Join(cwd, "shogunc.yml"))
 	return err == nil
 }
 
-func (g *Generator) loadConfig() error {
-	path := filepath.Join("../../", "shogunc.yml")
+func (g *Generator) loadConfig(cwd string) error {
+	path := filepath.Join(cwd, "shogunc.yml")
 
 	configFile, err := os.ReadFile(path)
 	if err != nil {

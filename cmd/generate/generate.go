@@ -173,7 +173,6 @@ func (g *Generator) LoadSchema() error {
 		default:
 			return errors.New("[GENERATE] load schema failed with invalid type")
 		}
-		return nil
 	}
 
 	if genContent.Len() == 0 {

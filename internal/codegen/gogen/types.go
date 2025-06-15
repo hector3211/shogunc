@@ -1,6 +1,7 @@
 package gogen
 
 import (
+	"bytes"
 	"fmt"
 	"shogunc/internal/sqlparser"
 	"shogunc/utils"
@@ -8,24 +9,42 @@ import (
 )
 
 func GenerateEnumType(enumType *sqlparser.EnumType) (string, error) {
-	var strBuilder strings.Builder
+	var buffer bytes.Buffer
 
-	strBuilder.WriteString(fmt.Sprintf("type %s string\n\n", enumType.Name))
-	strBuilder.WriteString("const (\n")
+	buffer.WriteString(fmt.Sprintf("type %s string\n\n", enumType.Name))
+	buffer.WriteString("const (\n")
 
 	for _, v := range enumType.Values {
 		value := utils.ToPascalCase(v)
-		strBuilder.WriteString(fmt.Sprintf("\t%s %s = %q\n", value, enumType.Name, v))
+		buffer.WriteString(fmt.Sprintf("\t%s %s = %q\n", value, enumType.Name, v))
 	}
 
-	strBuilder.WriteString(")\n")
-	return strBuilder.String(), nil
+	buffer.WriteString(")\n")
+	return buffer.String(), nil
 }
 
 func GenerateTableType(tableType *sqlparser.TableType) (string, error) {
-	var strBuilder strings.Builder
+	var buffer bytes.Buffer
 
-	strBuilder.WriteString(fmt.Sprintf("type %s struct {\n", strings.ToUpper(tableType.Name[:1])+tableType.Name[1:]))
+	selectType, err := generateSelectableTableType(tableType)
+	if err != nil {
+		return "", err
+	}
+	buffer.WriteString(selectType)
+
+	insertType, err := genreateInsertTableType(tableType)
+	if err != nil {
+		return "", err
+	}
+	buffer.WriteString(insertType)
+
+	return buffer.String(), nil
+}
+
+func generateSelectableTableType(tableType *sqlparser.TableType) (string, error) {
+	var buffer bytes.Buffer
+
+	buffer.WriteString(fmt.Sprintf("type %s struct {\n", strings.ToUpper(tableType.Name[:1])+tableType.Name[1:]))
 	for _, f := range tableType.Fields {
 		goDataType := sqlparser.SqlToGoType(f.DataType)
 		if goDataType == "" {
@@ -33,23 +52,23 @@ func GenerateTableType(tableType *sqlparser.TableType) (string, error) {
 		}
 
 		fieldType := goDataType
-		if !f.NotNull {
-			fieldType = "*" + goDataType
-		}
+		// if !f.NotNull {
+		// 	fieldType = "*" + goDataType
+		// }
 
 		fieldName := utils.ToPascalCase(f.Name)
 		jsonTag := fmt.Sprintf("`db:%q`", f.Name)
 
-		strBuilder.WriteString(fmt.Sprintf("\t%s %s %s\n", fieldName, fieldType, jsonTag))
+		buffer.WriteString(fmt.Sprintf("\t%s %s %s\n", fieldName, fieldType, jsonTag))
 	}
 
-	strBuilder.WriteString("}\n")
-	return strBuilder.String(), nil
+	buffer.WriteString("}\n")
+	return buffer.String(), nil
 }
 
-func GenreateInsertTableType(tableType *sqlparser.TableType) (string, error) {
-	var strBuilder strings.Builder
-	strBuilder.WriteString(fmt.Sprintf("type New%s struct {\n", tableType.Name))
+func genreateInsertTableType(tableType *sqlparser.TableType) (string, error) {
+	var buffer bytes.Buffer
+	buffer.WriteString(fmt.Sprintf("type New%s struct {\n", tableType.Name[:len(tableType.Name)-1]))
 	for _, f := range tableType.Fields {
 		goDataType := sqlparser.SqlToGoType(f.DataType)
 		if goDataType == "" {
@@ -64,10 +83,10 @@ func GenreateInsertTableType(tableType *sqlparser.TableType) (string, error) {
 		fieldName := utils.ToPascalCase(f.Name)
 		jsonTag := fmt.Sprintf("`db:%q`", f.Name)
 
-		strBuilder.WriteString(fmt.Sprintf("\t%s %s %s\n", fieldName, fieldType, jsonTag))
+		buffer.WriteString(fmt.Sprintf("\t%s %s %s\n", fieldName, fieldType, jsonTag))
 	}
 
-	strBuilder.WriteString("}\n")
+	buffer.WriteString("}\n")
 
-	return strBuilder.String(), nil
+	return buffer.String(), nil
 }

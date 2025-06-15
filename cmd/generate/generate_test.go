@@ -89,6 +89,8 @@ sql:
 		t.Fatalf("Expected output file to exist, got error: %v", err)
 	}
 
+	// fmt.Println(string(out))
+
 	if !strings.Contains(string(out), "type Users") {
 		t.Errorf("Expected generated output to contain 'type Users'\nOutput: %s", string(out))
 	}

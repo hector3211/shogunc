@@ -150,6 +150,11 @@ func TestTableTypeGenerator(t *testing.T) {
 	want := `type Users struct {
 	Id string ` + "`db:\"id\"`" + `
 	Email string ` + "`db:\"email\"`" + `
+	Status UserStatus ` + "`db:\"status\"`" + `
+}
+type NewUser struct {
+	Id string ` + "`db:\"id\"`" + `
+	Email string ` + "`db:\"email\"`" + `
 	Status *UserStatus ` + "`db:\"status\"`" + `
 }
 `

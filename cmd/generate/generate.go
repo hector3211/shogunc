@@ -97,6 +97,7 @@ func (g Generator) hasConfig(cwd string) bool {
 	return err == nil
 }
 
+
 func (g *Generator) loadConfig(cwd string) error {
 	path := filepath.Join(cwd, "shogunc.yml")
 
@@ -152,7 +153,7 @@ func (g *Generator) LoadSchema() error {
 			if _, ok := g.Types[t.Name]; !ok {
 				g.Types[t.Name] = t
 			}
-
+      
 			content, err := gogen.GenerateTableType(t)
 			if err != nil {
 				return fmt.Errorf("[GENERATE] failed generating table type %v", err)
@@ -260,6 +261,7 @@ func (g *Generator) extractSqlBlocks(file *os.File, fileName string) ([]QueryBlo
 	var current *QueryBlock
 	var sqlBuilder bytes.Buffer
 
+	// TODO: clean this logic up
 	for scanner.Scan() {
 		line := scanner.Text()
 		// Match on shogunc tag
@@ -295,7 +297,7 @@ func (g *Generator) extractSqlBlocks(file *os.File, fileName string) ([]QueryBlo
 	}
 
 	return blocks, nil
-}
+ }
 
 func (g Generator) writeOutput() error {
 	if g.outputCache.Len() == 0 {

@@ -64,10 +64,44 @@ sql:
 	if err := os.Chdir(tmp); err != nil {
 		t.Fatal(err)
 	}
+	if !strings.Contains(out, "func ListUsers(ctx context.Context)") {
+		t.Errorf("[GENERATE_TEST] expected output to contain 'func ListUsers', got: %s", out)
+	}
+	// if !strings.Contains(out, "func GetUserByClerkId(ctx context.Context)") {
+	// 	t.Errorf("[GENERATE_TEST] expected output to contain 'func ListUsers', got: %s", out)
+	// }
+}
+
+func TestHasConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	yml := `
+sql:
+    queries: queries
+    schema: schema.sql
+    driver: sqlite3
+`
+	_ = createTempFile(t, tmpDir, "shogunc.yml", yml)
+
+	oldWd, _ := os.Getwd()
+	defer os.Chdir(oldWd)
+	os.Chdir(tmpDir)
+
+	gen := NewGenerator()
+	if !gen.hasConfig() {
+		t.Fatal("Expected HasConfig to return true")
+	}
+}
 
 	gen := NewGenerator()
 	if err := gen.Execute(tmp); err != nil {
 		t.Fatalf("Execute failed: %v", err)
+	}
+	defer f.Close()
+
+	gen := NewGenerator()
+	blocks, err := gen.extractSqlBlocks(f, "test.sql")
+	if err != nil {
+		t.Fatalf("extractSqlBlocks failed: %v", err)
 	}
 
 	// Asserts
@@ -97,4 +131,5 @@ sql:
 	if !strings.Contains(string(out), "func GetUser") {
 		t.Errorf("Expected generated output to contain 'func GetUser'\nOutput: %s", string(out))
 	}
+	return path
 }

@@ -116,3 +116,12 @@ func formatType(v any) string {
 		return fmt.Sprintf("%v", v)
 	}
 }
+
+func formatType(v any) string {
+	switch v.(type) {
+	case string:
+		return fmt.Sprintf(`"%s"`, v)
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}

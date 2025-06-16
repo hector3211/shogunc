@@ -141,7 +141,7 @@ func TestTableTypeGenerator(t *testing.T) {
 			},
 		},
 	}
-
+  
 	got, err := GenerateTableType(table)
 	if err != nil {
 		t.Fatalf("generating table type failed: %v", err)

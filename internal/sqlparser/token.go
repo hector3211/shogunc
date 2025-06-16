@@ -275,20 +275,22 @@ func SqlNow(tok Token) string {
 }
 
 func SqlToGoType(tok Token) string {
-	switch tok.Type {
-	case TEXT, VARCHAR, UUID:
+	switch tok.Literal {
+	case "TEXT", "VARCHAR", "UUID":
 		return "string"
-	case INT, BIGINT, SMALLINT:
+	case "INT", "BIGINT", "SMALLINT":
 		return "int"
-	case DECIMAL:
+	case "DECIMAL":
 		return "float64"
-	case BOOLEAN:
+	case "BOOLEAN":
 		return "bool"
-	case TIMESTAMP, DATE:
+	case "TIMESTAMP", "DATE":
 		return "time.Time"
-	case ENUM:
-		return tok.Literal
-	default:
-		return ""
 	}
+
+	if tok.Type == ENUM {
+		return tok.Literal
+	}
+
+	return ""
 }

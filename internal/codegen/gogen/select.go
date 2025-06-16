@@ -1,6 +1,7 @@
 package gogen
 
 import (
+	"bytes"
 	"fmt"
 	"shogunc/internal/sqlparser"
 	"shogunc/utils"
@@ -21,41 +22,41 @@ func generateSelectFunction(tagType utils.Type, query *sqlparser.SelectStatement
 }
 
 func generateSelectOne(query *sqlparser.SelectStatement) string {
-	var sb strings.Builder
-	sb.WriteString("query := ")
+	var buffer bytes.Buffer
+	buffer.WriteString("query := ")
 
 	if len(query.Fields) == 1 && query.Fields[0] == "*" {
-		sb.WriteString("Select('*')")
+		buffer.WriteString("Select('*')")
 	} else {
-		sb.WriteString("Select(")
+		buffer.WriteString("Select(")
 		for idx, f := range query.Fields {
 			// Note: Field names come from the lexer capitalized
-			sb.WriteString(fmt.Sprintf("\"%s\"", strings.ToLower(f)))
+			buffer.WriteString(fmt.Sprintf("%q", strings.ToLower(f)))
 
 			if idx < len(query.Fields)-1 {
-				sb.WriteString(",")
+				buffer.WriteString(",")
 			}
 		}
-		sb.WriteString(")")
+		buffer.WriteString(")")
 	}
 
-	sb.WriteString(fmt.Sprintf(".From(\"%s\")", query.TableName))
+	buffer.WriteString(fmt.Sprintf(".From(%q)", query.TableName))
 
-	sb.WriteString(".Where(")
+	buffer.WriteString(".Where(")
 	for idx, c := range query.Conditions {
 		if c.Next != sqlparser.Illegal {
-			sb.WriteString(fmt.Sprintf("%s,", shoguncNextOp(c.Next)))
+			buffer.WriteString(fmt.Sprintf("%s,", shoguncNextOp(c.Next)))
 		}
-		sb.WriteString(shoguncConditionalOp(c))
+		buffer.WriteString(shoguncConditionalOp(c))
 
 		if idx < len(query.Conditions)-1 {
-			sb.WriteString(",")
+			buffer.WriteString(",")
 		}
 	}
-	sb.WriteString(")")
+	buffer.WriteString(")")
 
-	sb.WriteString(".Build()")
-	return sb.String()
+	buffer.WriteString(".Build()")
+	return buffer.String()
 }
 
 func shoguncNextOp(nextOp sqlparser.LogicalOp) string {
@@ -84,27 +85,36 @@ func shoguncConditionalOp(cond sqlparser.Condition) string {
 }
 
 func shoguncEqualOp(cond sqlparser.Condition) string {
-	strB := strings.Builder{}
-	strB.WriteString(fmt.Sprintf("Equal(\"%s\", %v)", string(cond.Left), formatType(cond.Right)))
-	return strB.String()
+	var buffer bytes.Buffer
+	buffer.WriteString(fmt.Sprintf("Equal(%q, %v)", string(cond.Left), formatType(cond.Right)))
+	return buffer.String()
 }
 
 func shoguncNotEqualOp(cond sqlparser.Condition) string {
-	strB := strings.Builder{}
-	strB.WriteString(fmt.Sprintf("NotEqual(\"%s\", %v)", string(cond.Left), formatType(cond.Right)))
-	return strB.String()
+	var buffer bytes.Buffer
+	buffer.WriteString(fmt.Sprintf("NotEqual(%q, %v)", string(cond.Left), formatType(cond.Right)))
+	return buffer.String()
 }
 
 func shoguncLessThanOp(cond sqlparser.Condition) string {
-	strB := strings.Builder{}
-	strB.WriteString(fmt.Sprintf("LessThan(\"%s\", %v)", string(cond.Left), formatType(cond.Right)))
-	return strB.String()
+	var buffer bytes.Buffer
+	buffer.WriteString(fmt.Sprintf("LessThan(%q, %v)", string(cond.Left), formatType(cond.Right)))
+	return buffer.String()
 }
 
 func shoguncGreaterThanOp(cond sqlparser.Condition) string {
-	strB := strings.Builder{}
-	strB.WriteString(fmt.Sprintf("GreaterThan(\"%s\", %s)", string(cond.Left), formatType(cond.Right)))
-	return strB.String()
+	var buffer bytes.Buffer
+	buffer.WriteString(fmt.Sprintf("GreaterThan(%q, %s)", string(cond.Left), formatType(cond.Right)))
+	return buffer.String()
+}
+
+func formatType(v any) string {
+	switch v.(type) {
+	case string:
+		return fmt.Sprintf("%q", v)
+	default:
+		return fmt.Sprintf("%v", v)
+	}
 }
 
 func formatType(v any) string {

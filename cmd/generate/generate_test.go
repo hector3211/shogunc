@@ -7,35 +7,17 @@ import (
 	"testing"
 )
 
-func TestLoadConfig(t *testing.T) {
-	configContents, err := os.ReadFile("../../shogunc.yml")
+func TestGenerator_Execute(t *testing.T) {
+	originalCwd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer os.Chdir(originalCwd)
 
-	gen := NewGenerator()
-	if err := gen.parseConfig(configContents); err != nil {
-		t.Fatal(err)
-	}
+	tmp := t.TempDir()
 
-	if gen.Config.Sql.Driver == "" {
-		t.Fatalf("Expected driver entry [ 'sqlite', 'postgres' ] Got: %s", gen.Config.Sql.Driver)
-	}
-
-	if gen.Config.Sql.Queries == "" {
-		t.Fatalf("Expected queries entry Got: %s", gen.Config.Sql.Queries)
-	}
-
-	if gen.Config.Sql.Schema == "" {
-		t.Fatalf("Expected schema entry Got: %s", gen.Config.Sql.Schema)
-	}
-}
-
-func TestParseSqlFile(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	schemaContent := `
-CREATE TABLE IF NOT EXISTS "users" (
+	// Write schema.sql
+	schema := `CREATE TABLE IF NOT EXISTS "users" (
     "id"          UUID PRIMARY KEY,
     "clerk_id"    TEXT UNIQUE                    NOT NULL,
     "first_name"  VARCHAR                        NOT NULL,
@@ -49,68 +31,38 @@ CREATE TABLE IF NOT EXISTS "users" (
     "updated_at"  TIMESTAMP          DEFAULT now(),
     "created_at"  TIMESTAMP          DEFAULT now()
 );
-
-CREATE TABLE IF NOT EXISTS "lockers" (
-    "id"          UUID PRIMARY KEY,
-    "access_code" VARCHAR,
-    "in_use"      BOOLEAN NOT NULL DEFAULT FALSE,
-    "user_id"     BIGINT
-);
-
-	`
-	schemaPath := filepath.Join(tmpDir, "schema.sql")
-	err := os.WriteFile(schemaPath, []byte(schemaContent), 0644)
-	if err != nil {
-		t.Fatalf("failed writing schema: %v", err)
-	}
-
-	sqlContent := `-- name: GetUserById :one
-SELECT * FROM users WHERE id = ?;
-
--- name: ListUsers :many
-SELECT * FROM users;
-
 `
-	sqlDir := filepath.Join(tmpDir, "queries")
-	os.Mkdir(sqlDir, 0755)
-	sqlFile := filepath.Join(sqlDir, "query.sql")
-	err = os.WriteFile(sqlFile, []byte(sqlContent), 0644)
-	if err != nil {
-		t.Fatalf("failed writing sql file: %v", err)
+	if err := os.WriteFile(filepath.Join(tmp, "schema.sql"), []byte(schema), 0644); err != nil {
+		t.Fatal(err)
 	}
 
-	gen := NewGenerator()
-	gen.Config.Sql.Schema = filepath.Join("schema.sql")
-	gen.Config.Sql.Queries = filepath.Join("queries")
-	gen.Config.Sql.Driver = SQLITE
-
-	oldwd, _ := os.Getwd()
-	defer os.Chdir(oldwd)
-	os.Chdir(tmpDir)
-
-	err = gen.LoadSchema()
-	if err != nil {
-		t.Fatalf("LoadSchema failed: %v", err)
+	// Make queries dir & write user.sql
+	queriesDir := filepath.Join(tmp, "queries")
+	if err := os.MkdirAll(queriesDir, 0755); err != nil {
+		t.Fatal(err)
 	}
 
-	if _, ok := gen.Types["users"]; !ok {
-		t.Fatalf("[GENERATE_TEST] expected type Users to be loaded from schema")
+	query := `-- name: GetUser :one
+SELECT * FROM users WHERE id = ?;`
+	if err := os.WriteFile(filepath.Join(queriesDir, "user.sql"), []byte(query), 0644); err != nil {
+		t.Fatal(err)
 	}
 
-	file, err := os.Open(sqlFile)
-	if err != nil {
-		t.Fatalf("[GENERATE_TEST] failed to open sql file: %v", err)
+	// Write config file
+	config := `
+sql:
+  schema: schema.sql
+  queries: queries
+  driver: sqlite3
+  output: output.sql.go
+`
+	if err := os.WriteFile(filepath.Join(tmp, "shogunc.yml"), []byte(config), 0644); err != nil {
+		t.Fatal(err)
 	}
-	defer file.Close()
 
-	out, err := gen.parseSqlFile(file)
-	if err != nil {
-		t.Fatalf("[GENERATE_TEST] ParseSqlFile failed: %v", err)
-	}
-	// t.Logf("[OUTPUT]: %s\n", out)
-
-	if !strings.Contains(out, "func GetUserById(ctx context.Context)") {
-		t.Errorf("[GENERATE_TEST] expected output to contain 'func GetUserById', got: %s", out)
+	// Change into temp directory
+	if err := os.Chdir(tmp); err != nil {
+		t.Fatal(err)
 	}
 	if !strings.Contains(out, "func ListUsers(ctx context.Context)") {
 		t.Errorf("[GENERATE_TEST] expected output to contain 'func ListUsers', got: %s", out)
@@ -140,41 +92,9 @@ sql:
 	}
 }
 
-func TestParseConfig(t *testing.T) {
 	gen := NewGenerator()
-	yml := `
-sql:
-    queries: queries
-    schema: schema.sql
-    driver: sqlite3
-`
-	err := gen.parseConfig([]byte(yml))
-	if err != nil {
-		t.Fatalf("Expected ParseConfig to succeed: %v", err)
-	}
-	if string(gen.Config.Sql.Queries) != "queries" {
-		t.Errorf("Expected query path 'sql', got '%s'", gen.Config.Sql.Queries)
-	}
-	if string(gen.Config.Sql.Schema) != "schema.sql" {
-		t.Errorf("Expected schema path 'schema.sql', got '%s'", gen.Config.Sql.Schema)
-	}
-	if gen.Config.Sql.Driver != SQLITE {
-		t.Errorf("Expected driver sqlite3, got %s", gen.Config.Sql.Driver)
-	}
-}
-
-func TestExtractSqlBlocks(t *testing.T) {
-	sql := `-- name: GetUserById :one
-SELECT * FROM users WHERE id = ?;
-
--- name: ListUsers :many
-SELECT * FROM users;
-`
-	file := filepath.Join(t.TempDir(), "test.sql")
-	os.WriteFile(file, []byte(sql), 0644)
-	f, err := os.Open(file)
-	if err != nil {
-		t.Fatal(err)
+	if err := gen.Execute(tmp); err != nil {
+		t.Fatalf("Execute failed: %v", err)
 	}
 	defer f.Close()
 
@@ -184,23 +104,32 @@ SELECT * FROM users;
 		t.Fatalf("extractSqlBlocks failed: %v", err)
 	}
 
-	if len(blocks) != 2 {
-		t.Fatalf("Expected 2 query blocks, got %d", len(blocks))
+	// Asserts
+	if gen.Config.Sql.Driver != SQLITE {
+		t.Errorf("Expected driver 'sqlite3', got '%s'", gen.Config.Sql.Driver)
 	}
-	if blocks[0].Name != "GetUserById" {
-		t.Errorf("Expected first block name 'GetUserById', got '%s'", blocks[0].Name)
+	if gen.Config.Sql.Queries != "queries" {
+		t.Errorf("Expected queries path 'queries', got '%s'", gen.Config.Sql.Queries)
 	}
-	if !strings.Contains(blocks[0].SQL, "SELECT * FROM users") {
-		t.Errorf("Unexpected SQL in first block")
+	if gen.Config.Sql.Schema != "schema.sql" {
+		t.Errorf("Expected schema path 'schema.sql', got '%s'", gen.Config.Sql.Schema)
 	}
-}
+	if gen.Config.Sql.Output != "output.sql.go" {
+		t.Errorf("Expected output path 'output.sql.go', got '%s'", gen.Config.Sql.Output)
+	}
 
-func createTempFile(t *testing.T, dir, name, contents string) string {
-	t.Helper()
-	path := filepath.Join(dir, name)
-	err := os.WriteFile(path, []byte(contents), 0644)
+	out, err := os.ReadFile(gen.Config.Sql.Output)
 	if err != nil {
-		t.Fatalf("Failed to write temp file: %v", err)
+		t.Fatalf("Expected output file to exist, got error: %v", err)
+	}
+
+	// fmt.Println(string(out))
+
+	if !strings.Contains(string(out), "type Users") {
+		t.Errorf("Expected generated output to contain 'type Users'\nOutput: %s", string(out))
+	}
+	if !strings.Contains(string(out), "func GetUser") {
+		t.Errorf("Expected generated output to contain 'func GetUser'\nOutput: %s", string(out))
 	}
 	return path
 }

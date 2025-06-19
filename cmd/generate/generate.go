@@ -16,6 +16,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// NOTE: Debug feature
+type ErrMsg string
+
+type ErrorLogger struct {
+	ErrMsg   ErrMsg
+	Position int
+}
+
 type Driver string
 
 const (
@@ -97,7 +105,6 @@ func (g Generator) hasConfig(cwd string) bool {
 	return err == nil
 }
 
-
 func (g *Generator) loadConfig(cwd string) error {
 	path := filepath.Join(cwd, "shogunc.yml")
 
@@ -153,7 +160,7 @@ func (g *Generator) LoadSchema() error {
 			if _, ok := g.Types[t.Name]; !ok {
 				g.Types[t.Name] = t
 			}
-      
+
 			content, err := gogen.GenerateTableType(t)
 			if err != nil {
 				return fmt.Errorf("[GENERATE] failed generating table type %v", err)
@@ -297,7 +304,7 @@ func (g *Generator) extractSqlBlocks(file *os.File, fileName string) ([]QueryBlo
 	}
 
 	return blocks, nil
- }
+}
 
 func (g Generator) writeOutput() error {
 	if g.outputCache.Len() == 0 {

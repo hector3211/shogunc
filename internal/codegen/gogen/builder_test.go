@@ -141,13 +141,13 @@ func TestTableTypeGenerator(t *testing.T) {
 			},
 		},
 	}
-  
+
 	got, err := GenerateTableType(table)
 	if err != nil {
 		t.Fatalf("generating table type failed: %v", err)
 	}
 
-	want := `type Users struct {
+	want := `type User struct {
 	Id string ` + "`db:\"id\"`" + `
 	Email string ` + "`db:\"email\"`" + `
 	Status UserStatus ` + "`db:\"status\"`" + `

@@ -91,7 +91,7 @@ sql:
 
 	// fmt.Println(string(out))
 
-	if !strings.Contains(string(out), "type Users") {
+	if !strings.Contains(string(out), "type User") {
 		t.Errorf("Expected generated output to contain 'type Users'\nOutput: %s", string(out))
 	}
 	if !strings.Contains(string(out), "func GetUser") {

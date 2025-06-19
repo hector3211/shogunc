@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"shogunc/internal/sqlparser"
 	"shogunc/utils"
-	"strings"
 )
 
 type FuncGenerator struct {
@@ -34,14 +33,13 @@ func (g FuncGenerator) GenerateFunction(statement sqlparser.Node) (string, error
 	if g.tagType != utils.EXEC {
 		switch t := g.ReturnType.(type) {
 		case *sqlparser.TableType:
-			returnType += strings.ToUpper(t.Name[:1]) + t.Name[1:]
+			returnType += utils.Capitalize(t.Name)
 		default:
 			return "", errors.New("[BUILDER] failed infering type")
 		}
 	}
 
-	sb.WriteString(fmt.Sprintf("func %s(ctx context.Context) %s {", g.Name, returnType))
-	sb.WriteString(g.newLine())
+	sb.WriteString(fmt.Sprintf("func %s(ctx context.Context) %s {\n", g.Name, returnType))
 
 	switch stmt := statement.(type) {
 	case *sqlparser.SelectStatement:
@@ -50,15 +48,14 @@ func (g FuncGenerator) GenerateFunction(statement sqlparser.Node) (string, error
 		return "", errors.New("[BUILDER] fialed parsing SQL statement")
 	}
 
-	sb.WriteString(g.newLine())
-	sb.WriteString("}")
+	sb.WriteString("\n}")
 	return sb.String(), nil
 }
 
-func (g FuncGenerator) tab() string {
-	return "\t"
-}
+// func (g FuncGenerator) tab() string {
+// 	return "\t"
+// }
 
-func (g FuncGenerator) newLine() string {
-	return "\n"
-}
+// func (g FuncGenerator) newLine() string {
+// 	return "\n"
+// }

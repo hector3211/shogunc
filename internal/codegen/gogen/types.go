@@ -44,7 +44,15 @@ func GenerateTableType(tableType *sqlparser.TableType) (string, error) {
 func generateSelectableTableType(tableType *sqlparser.TableType) (string, error) {
 	var buffer bytes.Buffer
 
-	buffer.WriteString(fmt.Sprintf("type %s struct {\n", strings.ToUpper(tableType.Name[:1])+tableType.Name[1:]))
+	last := strings.ToLower(tableType.Name[len(tableType.Name)-1:])
+	base := tableType.Name
+	if last == "s" {
+		base = tableType.Name[:len(tableType.Name)-1]
+	}
+
+	typeName := utils.Capitalize(base)
+
+	buffer.WriteString(fmt.Sprintf("type %s struct {\n", typeName))
 	for _, f := range tableType.Fields {
 		goDataType := sqlparser.SqlToGoType(f.DataType)
 		if goDataType == "" {
@@ -52,10 +60,6 @@ func generateSelectableTableType(tableType *sqlparser.TableType) (string, error)
 		}
 
 		fieldType := goDataType
-		// if !f.NotNull {
-		// 	fieldType = "*" + goDataType
-		// }
-
 		fieldName := utils.ToPascalCase(f.Name)
 		jsonTag := fmt.Sprintf("`db:%q`", f.Name)
 
@@ -68,7 +72,16 @@ func generateSelectableTableType(tableType *sqlparser.TableType) (string, error)
 
 func genreateInsertTableType(tableType *sqlparser.TableType) (string, error) {
 	var buffer bytes.Buffer
-	buffer.WriteString(fmt.Sprintf("type New%s struct {\n", tableType.Name[:len(tableType.Name)-1]))
+
+	last := strings.ToLower(tableType.Name[len(tableType.Name)-1:])
+	base := tableType.Name
+	if last == "s" {
+		base = tableType.Name[:len(tableType.Name)-1]
+	}
+
+	typeName := utils.Capitalize(base)
+
+	buffer.WriteString(fmt.Sprintf("type New%s struct {\n", typeName))
 	for _, f := range tableType.Fields {
 		goDataType := sqlparser.SqlToGoType(f.DataType)
 		if goDataType == "" {

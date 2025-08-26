@@ -1,6 +1,7 @@
 package generate
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -43,7 +44,7 @@ func TestGenerator_Execute(t *testing.T) {
 	}
 
 	query := `-- name: GetUser :one
-SELECT * FROM users WHERE id = ?;`
+SELECT * FROM users WHERE id = $1;`
 	if err := os.WriteFile(filepath.Join(queriesDir, "user.sql"), []byte(query), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +90,7 @@ sql:
 		t.Fatalf("Expected output file to exist, got error: %v", err)
 	}
 
-	// fmt.Println(string(out))
+	fmt.Println(string(out))
 
 	if !strings.Contains(string(out), "type User") {
 		t.Errorf("Expected generated output to contain 'type Users'\nOutput: %s", string(out))

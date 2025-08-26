@@ -1,39 +1,9 @@
-package sqlparser
+package parser
 
 import (
+	"fmt"
 	"strings"
 	"time"
-)
-
-type LogicalOp string
-
-const (
-	And     LogicalOp = "And"
-	Or      LogicalOp = "Or"
-	Illegal LogicalOp = ""
-)
-
-func toLogicOp(op string) LogicalOp {
-	switch op {
-	case "AND":
-		return And
-	case "OR":
-		return Or
-	default:
-		return Illegal
-	}
-}
-
-type ConditionOp string
-
-const (
-	EQUAL       ConditionOp = "="
-	NOTEQUAL    ConditionOp = "!="
-	LESSTHAN    ConditionOp = "<"
-	GREATERTHAN ConditionOp = ">"
-	BETWEEN     ConditionOp = "BETWEEN"
-	ISNULL      ConditionOp = "IS NULL"
-	NOTNULL     ConditionOp = "IS NOT NULL"
 )
 
 type TokenType string
@@ -274,23 +244,23 @@ func SqlNow(tok Token) string {
 	return time.Now().String()
 }
 
-func SqlToGoType(tok Token) string {
+func SqlToGoType(tok Token) (string, error) {
 	switch tok.Literal {
 	case "TEXT", "VARCHAR", "UUID":
-		return "string"
+		return "string", nil
 	case "INT", "BIGINT", "SMALLINT":
-		return "int"
+		return "int", nil
 	case "DECIMAL":
-		return "float64"
+		return "float64", nil
 	case "BOOLEAN":
-		return "bool"
+		return "bool", nil
 	case "TIMESTAMP", "DATE":
-		return "time.Time"
+		return "time.Time", nil
 	}
 
 	if tok.Type == ENUM {
-		return tok.Literal
+		return tok.Literal, nil
 	}
 
-	return ""
+	return "", fmt.Errorf("[PARSER_TOKEN] failed generating go type current token: %s", tok.Literal)
 }

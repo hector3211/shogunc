@@ -1,4 +1,4 @@
-package sqlparser
+package parser
 
 import (
 	"fmt"
@@ -14,12 +14,12 @@ type Field struct {
 	IsUnique  bool    // true if UNIQUE
 }
 
-type TableType struct {
+type Table struct {
 	Name   string  // Table name
 	Fields []Field // table Fields
 }
 
-type EnumType struct {
+type Enum struct {
 	Name   string
 	Values []string
 }
@@ -56,7 +56,7 @@ func (a *Ast) ParseSchema() error {
 }
 
 func (a *Ast) parseTable() error {
-	stmt := &TableType{}
+	stmt := &Table{}
 
 	for a.currentToken.Type != STRING && a.currentToken.Type != EOF {
 		a.NextToken()
@@ -178,7 +178,7 @@ func (a Ast) isPrimitiveLiteral(t TokenType) bool {
 }
 
 func (a *Ast) parseType() error {
-	stmt := &EnumType{}
+	stmt := &Enum{}
 	a.NextToken()
 
 	if a.currentToken.Type != STRING {
@@ -204,7 +204,7 @@ func (a *Ast) parseType() error {
 }
 
 func (a *Ast) parseIndex() error {
-	stmt := &EnumType{}
+	stmt := &Enum{}
 	a.NextToken()
 
 	if a.currentToken.Type != STRING {
@@ -229,7 +229,7 @@ func (a *Ast) parseIndex() error {
 	return nil
 }
 
-func stringifyTableType(t *TableType) string {
+func stringifyTableType(t *Table) string {
 	var sb strings.Builder
 	sb.WriteString("CREATE TABLE IF NOT EXISTS ")
 	sb.WriteString(fmt.Sprintf("\"%s\"", t.Name))
@@ -267,7 +267,7 @@ func stringifyTableType(t *TableType) string {
 	return sb.String()
 }
 
-func stringifyEnumType(e *EnumType) string {
+func stringifyEnumType(e *Enum) string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("CREATE TYPE \"%s\" AS ENUM (", e.Name))
 

@@ -2,15 +2,14 @@ package generate
 
 import (
 	"bufio"
-	"bytes"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
-	"shogunc/internal/codegen/gogen"
-	"shogunc/internal/sqlparser"
-	"shogunc/utils"
+	"shogunc/internal/codegen"
+	"shogunc/internal/parser"
+	"shogunc/internal/types"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -30,13 +29,6 @@ const (
 	SQLITE   Driver = "sqlite3"
 	POSTGRES Driver = "postgres"
 )
-
-type QueryBlock struct {
-	Name     string // -name: GetUser
-	Type     utils.Type
-	SQL      string // sql query statement
-	Filename string // for debug or error reporting
-}
 
 // schema: schema.sql
 // queries: queries
@@ -59,7 +51,7 @@ type Generator struct {
 	Types       map[string]any
 	Imports     []string
 	tagRegex    *regexp.Regexp
-	outputCache *bytes.Buffer
+	outputCache *strings.Builder
 }
 
 func NewGenerator() *Generator {
@@ -76,7 +68,7 @@ func NewGenerator() *Generator {
 		Types:       make(map[string]any),
 		Imports:     []string{"context"},
 		tagRegex:    regexp.MustCompile(`--\s*name:\s*(\w+)\s*:(\w+)`),
-		outputCache: &bytes.Buffer{},
+		outputCache: &strings.Builder{},
 	}
 }
 
@@ -141,13 +133,13 @@ func (g *Generator) LoadSchema() error {
 		return err
 	}
 
-	lexer := sqlparser.NewLexer(string(fileContents))
-	ast := sqlparser.NewAst(lexer)
+	lexer := parser.NewLexer(string(fileContents))
+	ast := parser.NewAst(lexer)
 	if err := ast.ParseSchema(); err != nil {
 		return err
 	}
 
-	var genContent bytes.Buffer
+	var genContent strings.Builder
 	genContent.WriteString(`import (\n`)
 	for _, pkg := range g.Imports {
 		genContent.WriteString(fmt.Sprintf("\t%q\n", pkg))
@@ -156,23 +148,23 @@ func (g *Generator) LoadSchema() error {
 
 	for _, datatype := range ast.Statements {
 		switch t := datatype.(type) {
-		case *sqlparser.TableType:
+		case *parser.Table:
 			if _, ok := g.Types[t.Name]; !ok {
 				g.Types[t.Name] = t
 			}
 
-			content, err := gogen.GenerateTableType(t)
+			content, err := codegen.GenerateTableType(t)
 			if err != nil {
 				return fmt.Errorf("[GENERATE] failed generating table type %v", err)
 			}
 
 			genContent.WriteString(content + "\n")
 
-		case *sqlparser.EnumType:
+		case *parser.Enum:
 			if _, ok := g.Types[t.Name]; !ok {
 				g.Types[t.Name] = t
 			}
-			content, err := gogen.GenerateEnumType(t)
+			content, err := codegen.GenerateEnumType(t)
 			if err != nil {
 				return fmt.Errorf("[GENERATE] failed generating enum type %v", err)
 			}
@@ -187,7 +179,7 @@ func (g *Generator) LoadSchema() error {
 		return errors.New("[GENERATE] failed generating SQL types")
 	}
 
-	g.outputCache.Write(genContent.Bytes())
+	g.outputCache.Write([]byte(genContent.String()))
 	return nil
 }
 
@@ -231,10 +223,10 @@ func (g *Generator) parseSqlFile(file *os.File) error {
 		return err
 	}
 
-	var genContent bytes.Buffer
+	var genContent strings.Builder
 	for _, qb := range queryBlocks {
-		lexer := sqlparser.NewLexer(qb.SQL)
-		ast := sqlparser.NewAst(lexer)
+		lexer := parser.NewLexer(qb.SQL)
+		ast := parser.NewAst(lexer)
 		if err := ast.Parse(); err != nil {
 			return fmt.Errorf("[GENERATE] failed parsing %s: %w", qb.Name, err)
 		}
@@ -244,9 +236,13 @@ func (g *Generator) parseSqlFile(file *os.File) error {
 			return fmt.Errorf("[GENERATE] failed infering type for %s\n SQL: %s", qb.Name, qb.SQL)
 		}
 
-		funcGen := gogen.NewFuncGenerator([]byte(qb.Name), qb.Type, dataType)
-		for _, stmt := range ast.Statements {
-			code, err := funcGen.GenerateFunction(stmt)
+		if len(ast.Statements) == 0 {
+			return errors.New("[GENERATE] no SQL statements to parse")
+		}
+
+		funcGen := codegen.NewGoGenerator(g.Types, &qb)
+		for _, statement := range ast.Statements {
+			code, err := funcGen.Generate(statement)
 			if err != nil {
 				return err
 			}
@@ -261,12 +257,12 @@ func (g *Generator) parseSqlFile(file *os.File) error {
 	return nil
 }
 
-func (g *Generator) extractSqlBlocks(file *os.File, fileName string) ([]QueryBlock, error) {
+func (g *Generator) extractSqlBlocks(file *os.File, fileName string) ([]types.QueryBlock, error) {
 	scanner := bufio.NewScanner(file)
-	var blocks []QueryBlock
+	var blocks []types.QueryBlock
 
-	var current *QueryBlock
-	var sqlBuilder bytes.Buffer
+	var current *types.QueryBlock
+	var sqlBuilder strings.Builder
 
 	// TODO: clean this logic up
 	for scanner.Scan() {
@@ -279,9 +275,9 @@ func (g *Generator) extractSqlBlocks(file *os.File, fileName string) ([]QueryBlo
 				sqlBuilder.Reset()
 			}
 			// Initialize Tag with name & type
-			current = &QueryBlock{
+			current = &types.QueryBlock{
 				Name:     strings.ToUpper(matches[1][:1]) + matches[1][1:],
-				Type:     utils.Type(matches[2]),
+				Type:     types.Type(matches[2]),
 				Filename: fileName,
 			}
 			continue
@@ -311,7 +307,7 @@ func (g Generator) writeOutput() error {
 		return errors.New("[GENERATE] no content to write")
 	}
 
-	return os.WriteFile(g.Config.Sql.Output, g.outputCache.Bytes(), 0666)
+	return os.WriteFile(g.Config.Sql.Output, []byte(g.outputCache.String()), 0666)
 }
 
 func (g Generator) inferType(sql string) any {

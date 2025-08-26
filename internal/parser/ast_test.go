@@ -1,7 +1,8 @@
-package sqlparser
+package parser
 
 import (
 	"fmt"
+	"shogunc/internal/types"
 	"shogunc/utils"
 	"testing"
 	"time"
@@ -21,8 +22,16 @@ var gen = struct {
 			SQL:  []byte("SELECT id, name FROM users WHERE age > 30 LIMIT 10 OFFSET 5;"),
 		},
 		{
+			Name: "select_with_bind_params",
+			SQL:  []byte("SELECT * FROM users WHERE id = $1 AND active = $2;"),
+		},
+		{
 			Name: "insert_user",
 			SQL:  []byte("INSERT INTO users (name, age) VALUES ('John', 25) RETURNING id;"),
+		},
+		{
+			Name: "insert_with_bind_params",
+			SQL:  []byte("INSERT INTO users (name, email) VALUES ($1, $2) RETURNING id;"),
 		},
 	},
 }
@@ -124,21 +133,109 @@ func TestAstStatementParsing(t *testing.T) {
 
 			for _, n := range parser.Statements {
 				switch stmt := n.(type) {
-				case *SelectStatement:
-					t.Logf("SELECT - table: %s, fields: %v", stmt.TableName, stmt.Fields)
-					// for _, c := range stmt.Conditions {
-					// 	t.Logf("Condition - Ident: %s, Operator: %s, Value: %v\n", c.Left, c.Operator, c.Right)
-					// }
+				case *types.SelectStatement:
+					t.Logf("SELECT - table: %s, fields: %v", stmt.TableName, stmt.Columns)
+					for _, c := range stmt.Conditions {
+						t.Logf("Condition - Left: %s, Operator: %s, Right: %+v", c.Column, c.Operator, c.Value)
+					}
 					t.Logf("LIMIT: %d, OFFSET: %d", stmt.Limit, stmt.Offset)
 
-				case *InsertStatement:
-					t.Logf("INSERT - table: %s, values: %d", stmt.TableName, stmt.Values)
+				case *types.InsertStatement:
+					t.Logf("INSERT - table: %s, columns: %v", stmt.TableName, stmt.Columns)
+					for i, bind := range stmt.Values {
+						t.Logf("Value[%d] - Column: %s, Position: %d, Value: %+v", i, bind.Column, bind.Position, bind.Value)
+					}
 					// for _, col := range stmt.Columns {
 					// 	t.Logf("Column: %s", string(col))
 					// }
 
 				default:
 					t.Errorf("unknown AST node type: %T", n)
+				}
+			}
+		})
+	}
+}
+
+func TestBindFunctionality(t *testing.T) {
+	tests := []struct {
+		name     string
+		sql      string
+		expected []types.Condition
+	}{
+		{
+			name: "SELECT with explicit bind parameters",
+			sql:  "SELECT * FROM users WHERE id = $1 AND name = $2;",
+			expected: []types.Condition{
+				{Column: "id", Operator: types.ConditionOp("="), Value: types.Bind{Column: "id", Position: 1}},
+				{Column: "name", Operator: types.ConditionOp("="), Value: types.Bind{Column: "name", Position: 2}},
+			},
+		},
+		{
+			name: "SELECT with string literals",
+			sql:  "SELECT * FROM users WHERE active = 'true' AND role = 'admin';",
+			expected: []types.Condition{
+				{Column: "active", Operator: types.ConditionOp("="), Value: types.Bind{Column: "active", Value: &[]string{"true"}[0]}},
+				{Column: "role", Operator: types.ConditionOp("="), Value: types.Bind{Column: "role", Value: &[]string{"admin"}[0]}},
+			},
+		},
+		{
+			name: "INSERT with bind parameters",
+			sql:  "INSERT INTO users (name, email) VALUES ($1, $2);",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lexer := NewLexer(tt.sql)
+			parser := NewAst(lexer)
+
+			err := parser.Parse()
+			if err != nil {
+				t.Errorf("parse error: %v", err)
+				return
+			}
+
+			if len(parser.Statements) == 0 {
+				t.Errorf("no statements parsed")
+				return
+			}
+
+			switch stmt := parser.Statements[0].(type) {
+			case *types.SelectStatement:
+				if tt.expected != nil {
+					if len(stmt.Conditions) != len(tt.expected) {
+						t.Errorf("expected %d conditions, got %d", len(tt.expected), len(stmt.Conditions))
+						return
+					}
+
+					for i, expected := range tt.expected {
+						actual := stmt.Conditions[i]
+						if actual.Column != expected.Column {
+							t.Errorf("condition %d: expected Left %s, got %s", i, expected.Column, actual.Column)
+						}
+						if actual.Operator != expected.Operator {
+							t.Errorf("condition %d: expected Operator %s, got %s", i, expected.Operator, actual.Operator)
+						}
+						// Check Bind struct
+						if actual.Value.Column != expected.Value.Column {
+							t.Errorf("condition %d: expected Column %s, got %s", i, expected.Value.Column, actual.Value.Column)
+						}
+						if actual.Value.Position != expected.Value.Position {
+							t.Errorf("condition %d: expected Position %d, got %d", i, expected.Value.Position, actual.Value.Position)
+						}
+					}
+				}
+
+			case *types.InsertStatement:
+				// Check that INSERT statement has proper Bind structs
+				for i, bind := range stmt.Values {
+					if bind.Column != stmt.Columns[i] {
+						t.Errorf("value %d: expected Column %s, got %s", i, stmt.Columns[i], bind.Column)
+					}
+					if bind.Position == 0 && bind.Value == nil {
+						t.Errorf("value %d: Bind struct is empty", i)
+					}
 				}
 			}
 		})
@@ -175,7 +272,7 @@ func TestSchemaParse(t *testing.T) {
 
 	for _, n := range parser.Statements {
 		switch s := n.(type) {
-		case *TableType:
+		case *Table:
 			name := s.Name
 			if expected, ok := expectedTables[name]; ok {
 				if len(s.Fields) != expected {
@@ -184,7 +281,7 @@ func TestSchemaParse(t *testing.T) {
 			}
 			t.Logf("Parsed table: %s (%d columns)\n", name, len(s.Fields))
 
-		case *EnumType:
+		case *Enum:
 			name := s.Name
 			if expected, ok := expectedEnums[name]; ok {
 				if len(s.Values) != expected {
@@ -321,7 +418,7 @@ func TestSchemaTypes(t *testing.T) {
 
 	for _, n := range parser.Statements {
 		switch s := n.(type) {
-		case *TableType:
+		case *Table:
 			name := s.Name
 			fields, ok := expectedTypes[name]
 			if !ok {
@@ -348,24 +445,24 @@ func TestSchemaTypes(t *testing.T) {
 
 func TestStringifySelectStatement(t *testing.T) {
 	tests := []struct {
-		stmt *SelectStatement
+		stmt *types.SelectStatement
 		want string
 	}{
 		{
-			stmt: &SelectStatement{
-				Fields:    []string{"id", "name"},
+			stmt: &types.SelectStatement{
+				Columns:   []string{"id", "name"},
 				TableName: "users",
-				Conditions: []Condition{
-					{Left: []byte("age"), Operator: ">", Right: 30},
+				Conditions: []types.Condition{
+					{Column: "age", Operator: types.ConditionOp(">"), Value: types.Bind{Value: &[]string{"30"}[0]}},
 				},
 				Limit:  10,
 				Offset: 5,
 			},
-			want: "SELECT id, name FROM users WHERE age > 30 LIMIT 10 OFFSET 5;",
+			want: "SELECT id, name FROM users WHERE age > '30' LIMIT 10 OFFSET 5;",
 		},
 		{
-			stmt: &SelectStatement{
-				Fields:     []string{"*"},
+			stmt: &types.SelectStatement{
+				Columns:    []string{"*"},
 				TableName:  "orders",
 				Conditions: nil,
 				Limit:      0,
@@ -374,11 +471,11 @@ func TestStringifySelectStatement(t *testing.T) {
 			want: "SELECT * FROM orders;",
 		},
 		{
-			stmt: &SelectStatement{
-				Fields:    []string{"id", "name"},
+			stmt: &types.SelectStatement{
+				Columns:   []string{"id", "name"},
 				TableName: "products",
-				Conditions: []Condition{
-					{Left: []byte("price"), Operator: ">=", Right: 100},
+				Conditions: []types.Condition{
+					{Column: "price", Operator: types.ConditionOp(">="), Value: types.Bind{Value: &[]string{"100"}[0]}},
 				},
 				Distinct: true,
 				Limit:    0,
@@ -400,41 +497,51 @@ func TestStringifySelectStatement(t *testing.T) {
 
 func TestStringifyInsertStatement(t *testing.T) {
 	tests := []struct {
-		stmt *InsertStatement
+		stmt *types.InsertStatement
 		want string
 	}{
 		{
-			stmt: &InsertStatement{
-				TableName:       "users",
-				Columns:         [][]byte{[]byte("name"), []byte("age")},
-				Values:          []int{30, 25},
-				ReturningFields: [][]byte{[]byte("id")},
+			stmt: &types.InsertStatement{
+				TableName: "users",
+				Columns:   []string{"name", "age"},
+				Values: []types.Bind{
+					{Column: "name", Position: 0, Value: &[]string{"John"}[0]},
+					{Column: "age", Position: 0, Value: &[]string{"25"}[0]},
+				},
+				ReturningFields: []string{"id"},
 				InsertMode:      []byte("OR REPLACE"),
 			},
-			want: "INSERT OR REPLACE INTO users (name, age) VALUES (30, 25) RETURNING id;",
+			want: "INSERT OR REPLACE INTO users (name, age) VALUES ('John', '25') RETURNING id;",
 		},
 		{
-			stmt: &InsertStatement{
-				TableName:       "products",
-				Columns:         [][]byte{[]byte("id"), []byte("name"), []byte("price")},
-				Values:          []int{1, 100, 25},
+			stmt: &types.InsertStatement{
+				TableName: "products",
+				Columns:   []string{"id", "name", "price"},
+				Values: []types.Bind{
+					{Column: "id", Position: 1},
+					{Column: "name", Position: 2},
+					{Column: "price", Position: 3},
+				},
 				ReturningFields: nil,
 				InsertMode:      nil,
 			},
 			want: "INSERT INTO products (id, name, price) VALUES (1, 100, 25);",
 		},
 		{
-			stmt: &InsertStatement{
-				TableName:       "orders",
-				Columns:         [][]byte{[]byte("id"), []byte("quantity")},
-				Values:          []int{10, 2},
-				ReturningFields: [][]byte{[]byte("order_id")},
+			stmt: &types.InsertStatement{
+				TableName: "orders",
+				Columns:   []string{"id", "quantity"},
+				Values: []types.Bind{
+					{Column: "id", Position: 1},
+					{Column: "quantity", Position: 2},
+				},
+				ReturningFields: []string{"order_id"},
 				InsertMode:      nil,
 			},
-			want: "INSERT INTO orders (id, quantity) VALUES (10, 2) RETURNING order_id;",
+			want: "INSERT INTO orders (id, quantity) VALUES ($1, $2) RETURNING order_id;",
 		},
 		{
-			stmt: &InsertStatement{
+			stmt: &types.InsertStatement{
 				TableName:       "customers",
 				Columns:         nil,
 				Values:          nil,
@@ -456,7 +563,7 @@ func TestStringifyInsertStatement(t *testing.T) {
 }
 
 func TestStringifyTableType(t *testing.T) {
-	table := &TableType{
+	table := &Table{
 		Name: "users",
 		Fields: []Field{
 			{
@@ -492,7 +599,7 @@ func TestStringifyTableType(t *testing.T) {
 }
 
 func TestStringifyEnumType(t *testing.T) {
-	enum := &EnumType{
+	enum := &Enum{
 		Name:   "UserStatus",
 		Values: []string{"active", "inactive", "banned"},
 	}

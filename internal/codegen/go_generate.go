@@ -22,7 +22,6 @@ func NewGoGenerator(types map[string]any, queryBlock *types.QueryBlock) *GoGener
 }
 
 func (g GoGenerator) Generate(astStmt any) (*ast.FuncDecl, *ast.GenDecl, error) {
-	g.GenerateDB("db")
 	switch g.queryblock.Type {
 	case types.ONE, types.MANY:
 		if selectStmt, ok := astStmt.(*types.SelectStatement); ok {
@@ -46,15 +45,7 @@ func (g GoGenerator) generateSelectFunc(astStmt *types.SelectStatement, isMany b
 	}
 
 	returnType := g.generateReturnType(astStmt, isMany)
-	params := []*ast.Field{
-		{
-			Names: []*ast.Ident{ast.NewIdent("ctx")},
-			Type: &ast.SelectorExpr{
-				X:   ast.NewIdent("context"),
-				Sel: ast.NewIdent("Context"),
-			},
-		},
-	}
+	params := make([]*ast.Field, 0)
 	if paramTypeName != "" {
 		params = append(params, &ast.Field{
 			Names: []*ast.Ident{ast.NewIdent("params")},
@@ -237,41 +228,6 @@ func (g GoGenerator) shoguncConditionalOp(cond types.Condition) string {
 	}
 
 	return ""
-}
-
-// Db package --------------------------------------------------------------------
-func (g GoGenerator) GenerateDB(packageName string) string {
-	var buffer strings.Builder
-
-	buffer.WriteString(fmt.Sprintf("package %s\n\n", packageName))
-
-	buffer.WriteString(`import (
-	"context"
-	"database/sql"
-)
-
-`)
-
-	buffer.WriteString(`type DBX interface {
-		Exec(context.Context, string, ...any) error
-		Query(context.Context, string, ...any) (*sql.Rows, error)
-		QueryRow(context.Context, string, ...any) (*sql.Row, error)
-}
-
-`)
-
-	buffer.WriteString(`type Queries struct {
-		db DBX
-}
-
-`)
-
-	buffer.WriteString(`func New(db DBX) *Queries {
-	return &Queries{db: db}
-}
-
-`)
-	return buffer.String()
 }
 
 func (g *GoGenerator) setSchemaTypes(types map[string]any) {

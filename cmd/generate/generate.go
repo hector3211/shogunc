@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"go/format"
+	"go/token"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -243,11 +245,26 @@ func (g *Generator) parseSqlFile(file *os.File) error {
 
 		funcGen := codegen.NewGoGenerator(g.Types, &qb)
 		for _, statement := range ast.Statements {
-			code, err := funcGen.Generate(statement)
+			funcDecl, paramStruct, err := funcGen.Generate(statement)
 			if err != nil {
 				return err
 			}
-			genContent.WriteString(code + "\n")
+
+			// Convert AST nodes to Go code strings
+			if paramStruct != nil {
+				var buf strings.Builder
+				if err := format.Node(&buf, token.NewFileSet(), paramStruct); err != nil {
+					return fmt.Errorf("failed to format param struct: %w", err)
+				}
+				genContent.WriteString(buf.String() + "\n\n")
+			}
+			if funcDecl != nil {
+				var buf strings.Builder
+				if err := format.Node(&buf, token.NewFileSet(), funcDecl); err != nil {
+					return fmt.Errorf("failed to format function: %w", err)
+				}
+				genContent.WriteString(buf.String() + "\n\n")
+			}
 		}
 	}
 	if genContent.String() == "" {

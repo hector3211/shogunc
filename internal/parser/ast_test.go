@@ -485,7 +485,7 @@ func TestStringifySelectStatement(t *testing.T) {
 				Limit:  10,
 				Offset: 5,
 			},
-			want: "SELECT id, name FROM users WHERE age > '30' LIMIT 10 OFFSET 5;",
+			want: "SELECT id, name FROM users WHERE age > 30 LIMIT 10 OFFSET 5;",
 		},
 		{
 			stmt: &types.SelectStatement{
@@ -538,7 +538,7 @@ func TestStringifyInsertStatement(t *testing.T) {
 				ReturningFields: []string{"id"},
 				InsertMode:      []byte("OR REPLACE"),
 			},
-			want: "INSERT OR REPLACE INTO users (name, age) VALUES ('John', '25') RETURNING id;",
+			want: "INSERT OR REPLACE INTO users (name, age) VALUES ('John', 25) RETURNING id;",
 		},
 		{
 			stmt: &types.InsertStatement{

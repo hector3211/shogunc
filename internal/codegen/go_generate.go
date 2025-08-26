@@ -2,6 +2,8 @@ package codegen
 
 import (
 	"fmt"
+	"go/ast"
+	"go/token"
 	"shogunc/internal/parser"
 	"shogunc/internal/types"
 	"shogunc/utils"
@@ -19,56 +21,73 @@ func NewGoGenerator(types map[string]any, queryBlock *types.QueryBlock) *GoGener
 	return &GoGenerator{schemaTypes: types, queryblock: queryBlock}
 }
 
-func (g GoGenerator) Generate(astStmt any) (string, error) {
+func (g GoGenerator) Generate(astStmt any) (*ast.FuncDecl, *ast.GenDecl, error) {
+	g.GenerateDB("db")
 	switch g.queryblock.Type {
 	case types.ONE, types.MANY:
 		if selectStmt, ok := astStmt.(*types.SelectStatement); ok {
 			isMany := g.queryblock.Type == types.MANY
 			return g.generateSelectFunc(selectStmt, isMany)
 		}
-		return "", fmt.Errorf("no select statement found")
+		return nil, nil, fmt.Errorf("no select statement found")
 	case types.EXEC:
 		// return g.generateExecFunc(query),nil
-		return "", fmt.Errorf("EXEC not implemented yet")
+		return nil, nil, fmt.Errorf("EXEC not implemented yet")
 	default:
-		return "", fmt.Errorf("unsupported query type: %s", g.queryblock.Type)
+		return nil, nil, fmt.Errorf("unsupported query type: %s", g.queryblock.Type)
 	}
 }
 
 // Select Statement -----------------------------------------------------------
-func (g GoGenerator) generateSelectFunc(astStmt *types.SelectStatement, isMany bool) (string, error) {
-	var buffer strings.Builder
-
+func (g GoGenerator) generateSelectFunc(astStmt *types.SelectStatement, isMany bool) (*ast.FuncDecl, *ast.GenDecl, error) {
 	paramStruct, paramTypeName, err := g.generateSelectParamStruct(astStmt)
 	if err != nil {
-		return "", err
+		return nil, nil, err
 	}
 
-	// Add parameter struct if it has fields
-	if paramStruct != "" {
-		buffer.WriteString(paramStruct)
-		buffer.WriteString("\n\n")
-	}
-
-	// Generate function signature
 	returnType := g.generateReturnType(astStmt, isMany)
+	params := []*ast.Field{
+		{
+			Names: []*ast.Ident{ast.NewIdent("ctx")},
+			Type: &ast.SelectorExpr{
+				X:   ast.NewIdent("context"),
+				Sel: ast.NewIdent("Context"),
+			},
+		},
+	}
 	if paramTypeName != "" {
-		buffer.WriteString(fmt.Sprintf("func %s(ctx context.Context, params %s) %s {\n",
-			g.queryblock.Name, paramTypeName, returnType))
-	} else {
-		buffer.WriteString(fmt.Sprintf("func %s(ctx context.Context) %s {\n",
-			g.queryblock.Name, returnType))
+		params = append(params, &ast.Field{
+			Names: []*ast.Ident{ast.NewIdent("params")},
+			Type:  ast.NewIdent(paramTypeName),
+		})
 	}
 	query := g.generateSelectQuery(astStmt)
-	buffer.WriteString(query)
 
-	return buffer.String(), nil
+	function := &ast.FuncDecl{
+		Name: ast.NewIdent(g.queryblock.Name),
+		Type: &ast.FuncType{
+			Params: &ast.FieldList{List: params},
+			Results: &ast.FieldList{
+				List: []*ast.Field{
+					{Type: ast.NewIdent(returnType)},
+					{Type: ast.NewIdent("error")},
+				},
+			},
+		},
+		Body: &ast.BlockStmt{
+			List: []ast.Stmt{
+				query,
+			},
+		},
+	}
+
+	return function, paramStruct, nil
 }
 
-func (g GoGenerator) generateSelectParamStruct(astStmt *types.SelectStatement) (string, string, error) {
+func (g GoGenerator) generateSelectParamStruct(astStmt *types.SelectStatement) (*ast.GenDecl, string, error) {
 	fieldMap, err := g.inferDataType(astStmt.TableName) // Extract data type and its column types
 	if err != nil {
-		return "", "", err
+		return nil, "", err
 	}
 
 	params := make(map[string]string)
@@ -86,26 +105,40 @@ func (g GoGenerator) generateSelectParamStruct(astStmt *types.SelectStatement) (
 
 	// If no parameters, return empty struct name
 	if len(params) == 0 {
-		return "", "", nil
+		return nil, "", nil
 	}
 
-	var buffer strings.Builder
-	buffer.WriteString(fmt.Sprintf("type %s struct {\n", typeName))
-
+	var fields []*ast.Field
 	for columnName, goType := range params {
-		buffer.WriteString(fmt.Sprintf("\t%s %s `db:\"%s\"`\n",
-			columnName, goType, strings.ToLower(columnName)))
+		field := &ast.Field{
+			Names: []*ast.Ident{ast.NewIdent(columnName)},
+			Type:  ast.NewIdent(goType),
+			Tag: &ast.BasicLit{
+				Kind:  token.STRING,
+				Value: fmt.Sprintf("`json:\"%s\"`", columnName),
+			},
+		}
+
+		fields = append(fields, field)
 	}
 
-	buffer.WriteString("}\n")
-	return buffer.String(), typeName, nil
+	paramStructDel := &ast.GenDecl{
+		Tok: token.TYPE,
+		Specs: []ast.Spec{
+			&ast.TypeSpec{
+				Name: ast.NewIdent(typeName),
+				Type: &ast.StructType{
+					Fields: &ast.FieldList{List: fields},
+				},
+			},
+		},
+	}
+
+	return paramStructDel, typeName, nil
 }
 
-func (g GoGenerator) generateSelectQuery(astStmt *types.SelectStatement) string {
-	var buffer strings.Builder
-
+func (g GoGenerator) generateSelectQuery(astStmt *types.SelectStatement) ast.Stmt {
 	// Start SQL query
-	buffer.WriteString("\tquery := \"")
 	queryStmt := shogun.NewSelectBuilder()
 	if len(astStmt.Columns) == 1 && astStmt.Columns[0] == "*" {
 		queryStmt.Select("*")
@@ -131,15 +164,16 @@ func (g GoGenerator) generateSelectQuery(astStmt *types.SelectStatement) string 
 		queryStmt.Limit(astStmt.Limit)
 	}
 
-	buffer.WriteString(queryStmt.Build())
-	buffer.WriteString("\"\n")
+	sql := queryStmt.Build()
 
-	// Add basic function body
-	buffer.WriteString("\t// TODO: Implement database query execution\n")
-	buffer.WriteString("\treturn nil, nil\n")
-	buffer.WriteString("}\n")
-
-	return buffer.String()
+	return &ast.AssignStmt{
+		Lhs: []ast.Expr{ast.NewIdent("query")},
+		Tok: token.DEFINE,
+		Rhs: []ast.Expr{&ast.BasicLit{
+			Kind:  token.STRING,
+			Value: sql,
+		}},
+	}
 }
 
 func (g GoGenerator) generateReturnType(astStmt *types.SelectStatement, isMany bool) string {
@@ -210,11 +244,14 @@ func (g GoGenerator) GenerateDB(packageName string) string {
 	var buffer strings.Builder
 
 	buffer.WriteString(fmt.Sprintf("package %s\n\n", packageName))
+
 	buffer.WriteString(`import (
 	"context"
 	"database/sql"
 )
+
 `)
+
 	buffer.WriteString(`type DBX interface {
 		Exec(context.Context, string, ...any) error
 		Query(context.Context, string, ...any) (*sql.Rows, error)
@@ -230,7 +267,7 @@ func (g GoGenerator) GenerateDB(packageName string) string {
 `)
 
 	buffer.WriteString(`func New(db DBX) *Queries {
-		return &Queries{db: db}
+	return &Queries{db: db}
 }
 
 `)

@@ -3,11 +3,10 @@ package codegen
 import (
 	"go/ast"
 	"reflect"
-	"strings"
-	"testing"
-
 	"shogunc/internal/parser"
 	"shogunc/internal/types"
+	"strings"
+	"testing"
 )
 
 func TestNewGoGenerator(t *testing.T) {
@@ -218,9 +217,14 @@ func TestGenerateSelectFunc_NoParams(t *testing.T) {
 		t.Error("Expected no parameter struct to be generated")
 	}
 
-	// Check that function has only context parameter (no params)
+	// Check that function has context parameter (no params)
 	if len(funcDecl.Type.Params.List) != 1 {
 		t.Errorf("Expected 1 parameter (context only), got %d", len(funcDecl.Type.Params.List))
+	}
+	// Verify the context parameter
+	ctxParam := funcDecl.Type.Params.List[0]
+	if len(ctxParam.Names) == 0 || ctxParam.Names[0].Name != "ctx" {
+		t.Errorf("Expected first parameter name 'ctx', got '%s'", ctxParam.Names[0].Name)
 	}
 }
 
@@ -232,17 +236,17 @@ func TestGenerateReturnType(t *testing.T) {
 	selectStmt := &types.SelectStatement{TableName: "users"}
 
 	// Test ONE query
-	returnType := generator.generateReturnType(selectStmt, false)
-	expected := "(User, error)"
-	if returnType != expected {
-		t.Errorf("Expected '%s', got '%s'", expected, returnType)
+	returnType := generator.generateReturnType(selectStmt.TableName, false)
+	if ident, ok := returnType.(*ast.Ident); !ok || ident.Name != "User" {
+		t.Errorf("Expected ast.Ident with name 'User', got %T with value %v", returnType, returnType)
 	}
 
 	// Test MANY query
-	returnType = generator.generateReturnType(selectStmt, true)
-	expected = "([]User, error)"
-	if returnType != expected {
-		t.Errorf("Expected '%s', got '%s'", expected, returnType)
+	returnType = generator.generateReturnType(selectStmt.TableName, true)
+	if arrayType, ok := returnType.(*ast.ArrayType); !ok {
+		t.Errorf("Expected ast.ArrayType, got %T", returnType)
+	} else if ident, ok := arrayType.Elt.(*ast.Ident); !ok || ident.Name != "User" {
+		t.Errorf("Expected array element type to be ast.Ident with name 'User', got %T with value %v", arrayType.Elt, arrayType.Elt)
 	}
 }
 
@@ -328,7 +332,7 @@ func TestShoguncConditionalOp_BindParam(t *testing.T) {
 	}
 
 	result := generator.shoguncConditionalOp(condition)
-	expected := "id = $1"
+	expected := "id = params.Id"
 	if result != expected {
 		t.Errorf("Expected '%s', got '%s'", expected, result)
 	}
@@ -373,51 +377,59 @@ func TestShoguncNextOp(t *testing.T) {
 	}
 }
 
-func TestGenerateDB(t *testing.T) {
-	schemaTypes := make(map[string]any)
-	queryBlock := &types.QueryBlock{Name: "GetUser", Type: types.ONE}
-	generator := NewGoGenerator(schemaTypes, queryBlock)
-
-	result := generator.GenerateDB("queries")
-
-	if !strings.Contains(result, "package queries") {
-		t.Error("Expected package declaration")
-	}
-
-	if !strings.Contains(result, "type DBX interface") {
-		t.Error("Expected DBX interface")
-	}
-
-	if !strings.Contains(result, "type Queries struct") {
-		t.Error("Expected Queries struct")
-	}
-
-	if !strings.Contains(result, "func New(db DBX) *Queries") {
-		t.Error("Expected New function")
-	}
-}
-
 func TestGenerateEnumType(t *testing.T) {
 	enumType := &parser.Enum{
 		Name:   "Role",
 		Values: []string{"admin", "user", "moderator"},
 	}
 
-	result, err := GenerateEnumType(enumType)
+	typeDecl, constDecl, err := GenerateEnumType(enumType)
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
 
-	if !strings.Contains(result, "type Role string") {
-		t.Error("Expected enum type definition")
+	// Check type declaration
+	if typeDecl == nil {
+		t.Error("Expected type declaration")
+	}
+	if typeDecl.Tok.String() != "type" {
+		t.Errorf("Expected type declaration, got %s", typeDecl.Tok.String())
+	}
+	if typeSpec, ok := typeDecl.Specs[0].(*ast.TypeSpec); ok {
+		if typeSpec.Name.Name != "Role" {
+			t.Errorf("Expected type name 'Role', got '%s'", typeSpec.Name.Name)
+		}
+		if ident, ok := typeSpec.Type.(*ast.Ident); !ok || ident.Name != "string" {
+			t.Error("Expected type to be string")
+		}
+	} else {
+		t.Error("Expected TypeSpec")
 	}
 
-	if !strings.Contains(result, "Admin Role = \"admin\"") {
-		t.Error("Expected Admin constant")
+	// Check const declaration
+	if constDecl == nil {
+		t.Error("Expected const declaration")
+	}
+	if constDecl.Tok.String() != "const" {
+		t.Errorf("Expected const declaration, got %s", constDecl.Tok.String())
+	}
+	if len(constDecl.Specs) != 3 {
+		t.Errorf("Expected 3 const specs, got %d", len(constDecl.Specs))
 	}
 
-	if !strings.Contains(result, "User Role = \"user\"") {
-		t.Error("Expected User constant")
+	// Check first constant (Admin)
+	if valueSpec, ok := constDecl.Specs[0].(*ast.ValueSpec); ok {
+		if len(valueSpec.Names) == 0 || valueSpec.Names[0].Name != "Role_Admin" {
+			t.Errorf("Expected first constant name 'Role_Admin', got '%s'", valueSpec.Names[0].Name)
+		}
+		if valueSpec.Type == nil || valueSpec.Type.(*ast.Ident).Name != "Role" {
+			t.Error("Expected constant type to be Role")
+		}
+		if len(valueSpec.Values) == 0 || valueSpec.Values[0].(*ast.BasicLit).Value != "\"admin\"" {
+			t.Error("Expected constant value to be \"admin\"")
+		}
+	} else {
+		t.Error("Expected ValueSpec")
 	}
 }
 
@@ -430,25 +442,99 @@ func TestGenerateTableType(t *testing.T) {
 		},
 	}
 
-	result, err := GenerateTableType(tableType)
+	selectableType, err := GenerateTableType(tableType)
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
 
-	if !strings.Contains(result, "type User struct") {
-		t.Error("Expected User struct")
+	// Check selectable type
+	if selectableType == nil {
+		t.Error("Expected selectable type declaration")
+	}
+	if selectableType.Tok.String() != "type" {
+		t.Errorf("Expected type declaration, got %s", selectableType.Tok.String())
+	}
+	if typeSpec, ok := selectableType.Specs[0].(*ast.TypeSpec); ok {
+		if typeSpec.Name.Name != "User" {
+			t.Errorf("Expected type name 'User', got '%s'", typeSpec.Name.Name)
+		}
+		if structType, ok := typeSpec.Type.(*ast.StructType); ok {
+			if len(structType.Fields.List) != 2 {
+				t.Errorf("Expected 2 fields, got %d", len(structType.Fields.List))
+			}
+			// Check first field (Id)
+			field1 := structType.Fields.List[0]
+			if len(field1.Names) == 0 || field1.Names[0].Name != "Id" {
+				t.Errorf("Expected first field name 'Id', got '%s'", field1.Names[0].Name)
+			}
+			if field1.Type.(*ast.Ident).Name != "string" {
+				t.Error("Expected first field type to be string")
+			}
+			if field1.Tag == nil || field1.Tag.Value != "`db:\"id\"`" {
+				t.Errorf("Expected first field tag to be '`db:\"id\"`', got '%s'", field1.Tag.Value)
+			}
+		} else {
+			t.Error("Expected StructType")
+		}
+	} else {
+		t.Error("Expected TypeSpec")
+	}
+}
+
+func TestGenerateInsertableTableType(t *testing.T) {
+	tableType := &parser.Table{
+		Name: "users",
+		Fields: []parser.Field{
+			{Name: "id", DataType: parser.Token{Literal: "UUID"}, NotNull: true},
+			{Name: "email", DataType: parser.Token{Literal: "VARCHAR"}, NotNull: false},
+		},
 	}
 
-	if !strings.Contains(result, "Id string `db:\"id\"`") {
-		t.Error("Expected Id field")
+	insertableType, err := GenerateInsertableTableType(tableType)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
 	}
 
-	if !strings.Contains(result, "Email string `db:\"email\"`") {
-		t.Error("Expected Email field")
+	// Check insertable type
+	if insertableType == nil {
+		t.Error("Expected insertable type declaration")
 	}
-
-	if !strings.Contains(result, "type NewUser struct") {
-		t.Error("Expected NewUser struct")
+	if insertableType.Tok.String() != "type" {
+		t.Errorf("Expected type declaration, got %s", insertableType.Tok.String())
+	}
+	if typeSpec, ok := insertableType.Specs[0].(*ast.TypeSpec); ok {
+		if typeSpec.Name.Name != "NewUser" {
+			t.Errorf("Expected type name 'NewUser', got '%s'", typeSpec.Name.Name)
+		}
+		if structType, ok := typeSpec.Type.(*ast.StructType); ok {
+			if len(structType.Fields.List) != 2 {
+				t.Errorf("Expected 2 fields, got %d", len(structType.Fields.List))
+			}
+			// Check first field (Id) - should be non-pointer since NotNull: true
+			field1 := structType.Fields.List[0]
+			if len(field1.Names) == 0 || field1.Names[0].Name != "Id" {
+				t.Errorf("Expected first field name 'Id', got '%s'", field1.Names[0].Name)
+			}
+			if field1.Type.(*ast.Ident).Name != "string" {
+				t.Error("Expected first field type to be string (non-pointer)")
+			}
+			// Check second field (Email) - should be pointer since NotNull: false
+			field2 := structType.Fields.List[1]
+			if len(field2.Names) == 0 || field2.Names[0].Name != "Email" {
+				t.Errorf("Expected second field name 'Email', got '%s'", field2.Names[0].Name)
+			}
+			if starExpr, ok := field2.Type.(*ast.StarExpr); ok {
+				if starExpr.X.(*ast.Ident).Name != "string" {
+					t.Error("Expected second field type to be *string")
+				}
+			} else {
+				t.Error("Expected second field type to be pointer")
+			}
+		} else {
+			t.Error("Expected StructType")
+		}
+	} else {
+		t.Error("Expected TypeSpec")
 	}
 }
 

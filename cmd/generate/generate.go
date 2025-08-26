@@ -156,23 +156,48 @@ func (g *Generator) LoadSchema() error {
 				g.Types[t.Name] = t
 			}
 
-			content, err := codegen.GenerateTableType(t)
+			selectableType, err := codegen.GenerateTableType(t)
 			if err != nil {
 				return fmt.Errorf("[GENERATE] failed generating table type %v", err)
 			}
 
-			genContent.WriteString(content + "\n")
+			var buf strings.Builder
+			if err := format.Node(&buf, token.NewFileSet(), selectableType); err != nil {
+				return fmt.Errorf("failed to format selectable type: %w", err)
+			}
+			genContent.WriteString(buf.String() + "\n\n")
+
+			insertableType, err := codegen.GenerateInsertableTableType(t)
+			if err != nil {
+				return fmt.Errorf("[GENERATE] failed generating insertable table type %v", err)
+			}
+			buf.Reset()
+
+			if err := format.Node(&buf, token.NewFileSet(), insertableType); err != nil {
+				return fmt.Errorf("failed to format insertable type: %w", err)
+			}
+			genContent.WriteString(buf.String() + "\n")
 
 		case *parser.Enum:
 			if _, ok := g.Types[t.Name]; !ok {
 				g.Types[t.Name] = t
 			}
-			content, err := codegen.GenerateEnumType(t)
+			typeDecl, constDecl, err := codegen.GenerateEnumType(t)
 			if err != nil {
 				return fmt.Errorf("[GENERATE] failed generating enum type %v", err)
 			}
 
-			genContent.WriteString(content + "\n")
+			var buf strings.Builder
+			if err := format.Node(&buf, token.NewFileSet(), typeDecl); err != nil {
+				return fmt.Errorf("failed to format enum type: %w", err)
+			}
+			genContent.WriteString(buf.String() + "\n\n")
+
+			buf.Reset()
+			if err := format.Node(&buf, token.NewFileSet(), constDecl); err != nil {
+				return fmt.Errorf("failed to format enum const: %w", err)
+			}
+			genContent.WriteString(buf.String() + "\n")
 		default:
 			return errors.New("[GENERATE] load schema failed with invalid type")
 		}

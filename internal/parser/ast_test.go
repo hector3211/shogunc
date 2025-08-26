@@ -155,6 +155,33 @@ func TestAstStatementParsing(t *testing.T) {
 			}
 		})
 	}
+
+	// Test the specific problematic query
+	t.Run("Parsing: hector_query", func(t *testing.T) {
+		query := "SELECT id, clerk_id, first_name, last_name, email, phone, role, status, created_at FROM users WHERE first_name = 'hector' LIMIT 1;"
+		lexer := NewLexer(query)
+		parser := NewAst(lexer)
+
+		err := parser.Parse()
+		if err != nil {
+			t.Errorf("parse error: %v", err)
+			return
+		}
+
+		for _, n := range parser.Statements {
+			switch stmt := n.(type) {
+			case *types.SelectStatement:
+				t.Logf("SELECT - table: %s, fields: %v", stmt.TableName, stmt.Columns)
+				for _, c := range stmt.Conditions {
+					t.Logf("Condition - Left: %s, Operator: %s, Right: %+v", c.Column, c.Operator, c.Value)
+					if c.Value.Value != nil {
+						t.Logf("DEBUG: Literal value: %q", *c.Value.Value)
+					}
+				}
+				t.Logf("LIMIT: %d, OFFSET: %d", stmt.Limit, stmt.Offset)
+			}
+		}
+	})
 }
 
 func TestBindFunctionality(t *testing.T) {

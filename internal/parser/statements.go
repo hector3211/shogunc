@@ -91,7 +91,9 @@ func (a *Ast) parseSelect() error {
 				}
 				cond.Value = bind
 			case STRING:
-				bind, err := a.parseBindParam(cond.Column, 0, &a.currentToken.Literal)
+				// Create a copy of the string to avoid pointer issues
+				literalValue := a.currentToken.Literal
+				bind, err := a.parseBindParam(cond.Column, 0, &literalValue)
 				if err != nil {
 					return err
 				}

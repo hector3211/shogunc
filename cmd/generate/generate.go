@@ -66,7 +66,7 @@ func NewGenerator() *Generator {
 			},
 		},
 		Types:       make(map[string]any),
-		Imports:     []string{"context"},
+		Imports:     []string{"context", "time"},
 		tagRegex:    regexp.MustCompile(`--\s*name:\s*(\w+)\s*:(\w+)`),
 		outputCache: &strings.Builder{},
 	}
@@ -140,11 +140,12 @@ func (g *Generator) LoadSchema() error {
 	}
 
 	var genContent strings.Builder
-	genContent.WriteString(`import (\n`)
+	genContent.WriteString("package main\n\n")
+	genContent.WriteString("import (\n")
 	for _, pkg := range g.Imports {
 		genContent.WriteString(fmt.Sprintf("\t%q\n", pkg))
 	}
-	genContent.WriteString(")\n")
+	genContent.WriteString(")\n\n")
 
 	for _, datatype := range ast.Statements {
 		switch t := datatype.(type) {

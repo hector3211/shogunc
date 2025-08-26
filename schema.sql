@@ -45,6 +45,20 @@ CREATE TYPE "Work_Category" AS ENUM (
     'other'
 );
 
+CREATE TYPE "Role" AS ENUM (
+    'tenant',
+    'landlord',
+    'admin',
+    'staff'
+);
+
+CREATE TYPE "Account_Status" AS ENUM (
+    'active',
+    'inactive',
+    'suspended',
+    'pending'
+);
+
 CREATE TABLE IF NOT EXISTS "users" (
     "id"          UUID PRIMARY KEY,
     "clerk_id"    TEXT UNIQUE                    NOT NULL,

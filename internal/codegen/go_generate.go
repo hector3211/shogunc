@@ -137,6 +137,7 @@ func (g GoGenerator) generateSelectQuery(astStmt *types.SelectStatement) string 
 	// Add basic function body
 	buffer.WriteString("\t// TODO: Implement database query execution\n")
 	buffer.WriteString("\treturn nil, nil\n")
+	buffer.WriteString("}\n")
 
 	return buffer.String()
 }
@@ -279,7 +280,9 @@ func GenerateEnumType(enumType *parser.Enum) (string, error) {
 
 	for _, v := range enumType.Values {
 		value := utils.ToPascalCase(v)
-		buffer.WriteString(fmt.Sprintf("\t%s %s = %q\n", value, enumType.Name, v))
+		// Prefix constant name with enum type to avoid conflicts
+		constantName := enumType.Name + "_" + value
+		buffer.WriteString(fmt.Sprintf("\t%s %s = %q\n", constantName, enumType.Name, v))
 	}
 
 	buffer.WriteString(")\n")

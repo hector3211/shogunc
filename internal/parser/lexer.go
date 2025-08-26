@@ -58,9 +58,8 @@ func (l *Lexer) NextToken() Token {
 			// fmt.Printf("Token STRING: %+v\n", tok)
 			return tok
 		} else if isLetter(l.ch) {
-			// tok.Literal = l.readIdentifer()
-			tok.Literal = strings.ToUpper(l.readIdentifer())
-			tok.Type = LookupIdent(tok.Literal)
+			tok.Literal = l.readIdentifer()
+			tok.Type = LookupIdent(strings.ToUpper(tok.Literal))
 			// fmt.Printf("Token CHAR: %+v\n", tok)
 			return tok
 		} else if isDigit(l.ch) {

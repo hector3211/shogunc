@@ -42,6 +42,30 @@ func ToSnakeCase(s string) string {
 	return result.String()
 }
 
+func ToProperPascalCase(s string) string {
+	if s == "" {
+		return ""
+	}
+
+	// First convert to PascalCase (which may include underscores)
+	pascal := ToPascalCase(s)
+
+	// Then remove underscores and capitalize the next letter
+	var result strings.Builder
+	for i, r := range pascal {
+		if r == '_' && i+1 < len(pascal) {
+			// Skip underscore and capitalize next character
+			continue
+		} else if i > 0 && pascal[i-1] == '_' {
+			// This character follows an underscore, capitalize it
+			result.WriteRune(r - 'a' + 'A')
+		} else {
+			result.WriteRune(r)
+		}
+	}
+	return result.String()
+}
+
 func FormatType(v any) string {
 	switch v.(type) {
 	case string:

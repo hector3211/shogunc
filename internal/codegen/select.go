@@ -336,9 +336,11 @@ func (g *SelectGenerator) generateSelectParamStruct(astStmt *types.SelectStateme
 
 	var fields []*ast.Field
 	for _, param := range paramList {
+		fieldName := utils.ToProperPascalCase(param.name) // Use proper PascalCase (no underscores)
+		// Convert original param name to snake_case for JSON tag
 		jsonTag := utils.ToSnakeCase(param.name)
 		field := &ast.Field{
-			Names: []*ast.Ident{ast.NewIdent(param.name)},
+			Names: []*ast.Ident{ast.NewIdent(fieldName)}, // Proper PascalCase for Go field name
 			Type:  ast.NewIdent(param.typ),
 			Tag: &ast.BasicLit{
 				Kind:  token.STRING,

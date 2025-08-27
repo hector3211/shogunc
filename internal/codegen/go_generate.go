@@ -88,15 +88,15 @@ func GenerateTableType(tableType *parser.Table) (*ast.GenDecl, error) {
 			return nil, fmt.Errorf("[BUILDER] failed parsing %s %v to GO type", f.DataType.Literal, f.DataType.Type)
 		}
 
-		fieldName := utils.ToPascalCase(f.Name)
-		// Convert PascalCase to snake_case for JSON tag
-		jsonTag := utils.ToSnakeCase(fieldName)
+		fieldName := utils.ToProperPascalCase(f.Name) // Use proper PascalCase (no underscores)
+		// Convert original column name to snake_case for JSON tag
+		jsonTag := utils.ToSnakeCase(f.Name)
 		field := &ast.Field{
-			Names: []*ast.Ident{ast.NewIdent(fieldName)}, // Keep PascalCase for Go field name
+			Names: []*ast.Ident{ast.NewIdent(fieldName)}, // Proper PascalCase for Go field name
 			Type:  ast.NewIdent(goType),
 			Tag: &ast.BasicLit{
 				Kind:  token.STRING,
-				Value: fmt.Sprintf("`json:\"%s\" db:%q`", jsonTag, f.Name), // Add JSON tag with snake_case
+				Value: fmt.Sprintf("`json:\"%s\" db:%q`", jsonTag, f.Name), // JSON tag uses snake_case
 			},
 		}
 		fields = append(fields, field)
@@ -142,15 +142,15 @@ func GenerateInsertableTableType(tableType *parser.Table) (*ast.GenDecl, error) 
 			fieldType = ast.NewIdent(goType)
 		}
 
-		fieldName := utils.ToPascalCase(f.Name)
-		// Convert PascalCase to snake_case for JSON tag
-		jsonTag := utils.ToSnakeCase(fieldName)
+		fieldName := utils.ToProperPascalCase(f.Name) // Use proper PascalCase (no underscores)
+		// Convert original column name to snake_case for JSON tag
+		jsonTag := utils.ToSnakeCase(f.Name)
 		field := &ast.Field{
-			Names: []*ast.Ident{ast.NewIdent(fieldName)}, // Keep PascalCase for Go field name
+			Names: []*ast.Ident{ast.NewIdent(fieldName)}, // Proper PascalCase for Go field name
 			Type:  fieldType,
 			Tag: &ast.BasicLit{
 				Kind:  token.STRING,
-				Value: fmt.Sprintf("`json:\"%s\" db:%q`", jsonTag, f.Name), // Add JSON tag with snake_case
+				Value: fmt.Sprintf("`json:\"%s\" db:%q`", jsonTag, f.Name), // JSON tag uses snake_case
 			},
 		}
 		fields = append(fields, field)

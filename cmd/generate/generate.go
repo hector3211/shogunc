@@ -42,6 +42,7 @@ type SqlConfig struct {
 	Queries string `yaml:"queries"`
 	Driver  Driver `yaml:"driver"`
 	Output  string `yaml:"output,omitempty"`
+	Package string `yaml:"package"`
 }
 
 type ShogunConfig struct {
@@ -52,8 +53,8 @@ type Generator struct {
 	Config      ShogunConfig
 	Types       map[string]any
 	Imports     []string
-	tagRegex    *regexp.Regexp
-	outputCache *strings.Builder
+	TagRegex    *regexp.Regexp
+	OutputCache *strings.Builder
 }
 
 func NewGenerator() *Generator {
@@ -65,12 +66,14 @@ func NewGenerator() *Generator {
 				Driver:  "",
 				// Output:  fmt.Sprintf("%s/generated.sql.go",cwd),
 				Output: "../../tmp/generated.sql.go",
+				// Todo: turn to empty string
+				Package: "../../tmp/internal/db",
 			},
 		},
 		Types:       make(map[string]any),
 		Imports:     []string{"context", "time"},
-		tagRegex:    regexp.MustCompile(`--\s*name:\s*(\w+)\s*:(\w+)`),
-		outputCache: &strings.Builder{},
+		TagRegex:    regexp.MustCompile(`--\s*name:\s*(\w+)\s*:(\w+)`),
+		OutputCache: &strings.Builder{},
 	}
 }
 
@@ -123,6 +126,9 @@ func (g *Generator) loadConfig(cwd string) error {
 	}
 	if config.Sql.Output == "" {
 		return errors.New("[GENERATE] failed reading sql config output")
+	}
+	if config.Sql.Package == "" {
+		config.Sql.Package = "/internal/db"
 	}
 
 	g.Config.Sql = config.Sql
@@ -207,7 +213,7 @@ func (g *Generator) LoadSchema() error {
 		return errors.New("[GENERATE] failed generating SQL types")
 	}
 
-	g.outputCache.Write([]byte(genContent.String()))
+	g.OutputCache.Write([]byte(genContent.String()))
 	return nil
 }
 
@@ -296,7 +302,7 @@ func (g *Generator) parseSqlFile(file *os.File) error {
 		return errors.New("[GENERATE] failed generating code")
 	}
 
-	g.outputCache.WriteString(genContent.String())
+	g.OutputCache.WriteString(genContent.String())
 	return nil
 }
 
@@ -311,7 +317,7 @@ func (g *Generator) extractSqlBlocks(file *os.File, fileName string) ([]types.Qu
 	for scanner.Scan() {
 		line := scanner.Text()
 		// Match on shogunc tag
-		if matches := g.tagRegex.FindStringSubmatch(line); matches != nil {
+		if matches := g.TagRegex.FindStringSubmatch(line); matches != nil {
 			if current != nil {
 				current.SQL = sqlBuilder.String()
 				blocks = append(blocks, *current)
@@ -346,11 +352,11 @@ func (g *Generator) extractSqlBlocks(file *os.File, fileName string) ([]types.Qu
 }
 
 func (g Generator) writeOutput() error {
-	if g.outputCache.Len() == 0 {
+	if g.OutputCache.Len() == 0 {
 		return errors.New("[GENERATE] no content to write")
 	}
 
-	return os.WriteFile(g.Config.Sql.Output, []byte(g.outputCache.String()), 0666)
+	return os.WriteFile(g.Config.Sql.Output, []byte(g.OutputCache.String()), 0666)
 }
 
 func (g Generator) inferType(sql string) any {

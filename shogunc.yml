@@ -3,6 +3,7 @@ sql:
   queries: queries
   driver: sqlite3
   output: /tmp/generated.sql.go
+  package: "/internal/db"
 #   gen:
 #     go:
 #       package: "authors"

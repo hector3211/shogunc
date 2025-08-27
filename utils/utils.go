@@ -2,6 +2,7 @@ package utils
 
 import (
 	"fmt"
+	"go/ast"
 	"strings"
 )
 
@@ -23,6 +24,24 @@ func Capitalize(s string) string {
 	return strings.ToUpper(s[:1]) + s[1:]
 }
 
+func ToSnakeCase(s string) string {
+	if s == "" {
+		return ""
+	}
+	var result strings.Builder
+	for i, r := range s {
+		if i > 0 && r >= 'A' && r <= 'Z' {
+			result.WriteRune('_')
+		}
+		if r >= 'A' && r <= 'Z' {
+			result.WriteRune(r - 'A' + 'a')
+		} else {
+			result.WriteRune(r)
+		}
+	}
+	return result.String()
+}
+
 func FormatType(v any) string {
 	switch v.(type) {
 	case string:
@@ -30,4 +49,16 @@ func FormatType(v any) string {
 	default:
 		return fmt.Sprintf("%v", v)
 	}
+}
+
+func TypeToString(resultType ast.Expr) string {
+	var typeName string
+	if ident, ok := resultType.(*ast.Ident); ok {
+		typeName = ident.Name
+	} else if arrayType, ok := resultType.(*ast.ArrayType); ok {
+		if eltIdent, ok := arrayType.Elt.(*ast.Ident); ok {
+			typeName = "[]" + eltIdent.Name
+		}
+	}
+	return typeName
 }

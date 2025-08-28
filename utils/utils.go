@@ -12,6 +12,27 @@ func StrPtr(s string) *string {
 	return &s
 }
 
+// This is used to ensure bind parameters are in the correct format ($1, $2, etc.)
+func CleanBindParam(sql string) string {
+	// Remove quotes around bind parameters (shogun library adds them)
+	sql = strings.ReplaceAll(sql, "'$1'", "$1")
+	sql = strings.ReplaceAll(sql, "'$2'", "$2")
+	sql = strings.ReplaceAll(sql, "'$3'", "$3")
+	sql = strings.ReplaceAll(sql, "'$4'", "$4")
+	sql = strings.ReplaceAll(sql, "'$5'", "$5")
+	sql = strings.ReplaceAll(sql, "'$6'", "$6")
+	sql = strings.ReplaceAll(sql, "'$7'", "$7")
+	sql = strings.ReplaceAll(sql, "'$8'", "$8")
+	sql = strings.ReplaceAll(sql, "'$9'", "$9")
+	sql = strings.ReplaceAll(sql, "'$10'", "$10")
+	sql = strings.ReplaceAll(sql, "'$11'", "$11")
+	sql = strings.ReplaceAll(sql, "'$12'", "$12")
+	sql = strings.ReplaceAll(sql, "'$13'", "$13")
+	sql = strings.ReplaceAll(sql, "'$14'", "$14")
+	sql = strings.ReplaceAll(sql, "'$15'", "$15")
+	return sql
+}
+
 func ToPascalCase(s string) string {
 	if s == "" {
 		return ""
@@ -185,20 +206,6 @@ CREATE TABLE IF NOT EXISTS "lockers" (
 	return os.WriteFile("schema.sql", []byte(schemaSQL), 0644)
 }
 
-// GenerateTestFiles creates test queries, config, and schema files for development
-func GenerateTestFiles() error {
-	if err := generateTestSchema(); err != nil {
-		return fmt.Errorf("failed to generate test schema: %w", err)
-	}
-	if err := generateTestQueries(); err != nil {
-		return fmt.Errorf("failed to generate test queries: %w", err)
-	}
-	if err := generateTestConfig(); err != nil {
-		return fmt.Errorf("failed to generate test config: %w", err)
-	}
-	return nil
-}
-
 func generateTestQueries() error {
 	queriesDir := "queries"
 	if err := os.MkdirAll(queriesDir, 0755); err != nil {
@@ -226,9 +233,50 @@ LIMIT 1 OFFSET 20;
 SELECT id, first_name, last_name, email, role
 FROM users
 WHERE status = $1;
+
+-- name: CreateUser :exec
+INSERT INTO users (clerk_id, first_name, last_name, email, phone, unit_number, role, status)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
+
+-- name: CreateUserReturning :exec
+INSERT INTO users (clerk_id, first_name, last_name, email, phone, unit_number, role, status)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING id, clerk_id, first_name, last_name, email, role, status, created_at;
 `
 
-	return os.WriteFile(filepath.Join(queriesDir, "user.sql"), []byte(userSQL), 0644)
+	parkingSQL := `-- name: CreateParkingPermit :exec
+INSERT INTO parking_permits (permit_number, created_by, expires_at)
+VALUES ($1, $2, $3);
+
+-- name: CreateParkingPermitReturning :exec
+INSERT INTO parking_permits (permit_number, created_by, expires_at)
+VALUES ($1, $2, $3)
+RETURNING id, permit_number, created_by, expires_at;
+`
+
+	lockerSQL := `-- name: CreateLocker :exec
+INSERT INTO lockers (access_code, in_use, user_id)
+VALUES ($1, $2, $3);
+
+-- name: CreateLockerReturning :exec
+INSERT INTO lockers (access_code, in_use, user_id)
+VALUES ($1, $2, $3)
+RETURNING id, access_code, in_use, user_id;
+`
+
+	if err := os.WriteFile(filepath.Join(queriesDir, "user.sql"), []byte(userSQL), 0644); err != nil {
+		return err
+	}
+
+	if err := os.WriteFile(filepath.Join(queriesDir, "parking.sql"), []byte(parkingSQL), 0644); err != nil {
+		return err
+	}
+
+	if err := os.WriteFile(filepath.Join(queriesDir, "locker.sql"), []byte(lockerSQL), 0644); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func generateTestConfig() error {
@@ -237,22 +285,20 @@ func generateTestConfig() error {
   queries: queries
   driver: sqlite3
   output: /tmp/internal/db/generated
-#   gen:
-#     go:
-#       package: "authors"
-#       out: "postgresql"
-#   database:
-#     managed: true
-#   rules:
-#     - sqlc/db-prepare
-# - schema: "mysql/schema.sql"
-#   queries: "mysql/query.sql"
-#   engine: "mysql"
-#   gen:
-#     go:
-#       package: "authors"
-#       out: "mysql"
 `
 
 	return os.WriteFile("shogunc.yml", []byte(config), 0644)
+}
+
+func GenerateTestFiles() error {
+	if err := generateTestSchema(); err != nil {
+		return fmt.Errorf("failed to generate test schema: %w", err)
+	}
+	if err := generateTestQueries(); err != nil {
+		return fmt.Errorf("failed to generate test queries: %w", err)
+	}
+	if err := generateTestConfig(); err != nil {
+		return fmt.Errorf("failed to generate test config: %w", err)
+	}
+	return nil
 }

@@ -303,7 +303,7 @@ func TestGenerate_ExecNotImplemented(t *testing.T) {
 		t.Error("Expected error for EXEC type")
 	}
 
-	expectedError := "EXEC not implemented yet"
+	expectedError := "[GO_GENERATOR][EXEC] no statement found"
 	if !strings.Contains(err.Error(), expectedError) {
 		t.Errorf("Expected error to contain '%s', got '%s'", expectedError, err.Error())
 	}

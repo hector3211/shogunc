@@ -27,10 +27,13 @@ func (g GoGenerator) Generate(astStmt any) (*ast.FuncDecl, *ast.GenDecl, error) 
 			isMany := g.queryblock.Type == types.MANY
 			return selectGen.GenerateSelectFunc(selectStmt, isMany)
 		}
-		return nil, nil, fmt.Errorf("no select statement found")
+		return nil, nil, fmt.Errorf("[GO_GENERATOR][ONE/MANY] no statement found")
 	case types.EXEC:
-		// return g.generateExecFunc(query),nil
-		return nil, nil, fmt.Errorf("EXEC not implemented yet")
+		if insertStmt, ok := astStmt.(*types.InsertStatement); ok {
+			insertGen := NewInsertGenerator(g.schemaTypes, g.queryblock)
+			return insertGen.GenerateInsertFunc(insertStmt)
+		}
+		return nil, nil, fmt.Errorf("[GO_GENERATOR][EXEC] no statement found")
 	default:
 		return nil, nil, fmt.Errorf("unsupported query type: %s", g.queryblock.Type)
 	}

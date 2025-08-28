@@ -270,7 +270,7 @@ func (g *Generator) parseSqlFile(file *os.File, fileName string) error {
 			return fmt.Errorf("[GENERATE] failed parsing %s: %w", qb.Name, err)
 		}
 
-		dataType := g.inferType(qb.SQL)
+		dataType := g.inferDataType(qb.SQL)
 		if dataType == nil {
 			return fmt.Errorf("[GENERATE] failed infering type for %s\n SQL: %s", qb.Name, qb.SQL)
 		}
@@ -393,13 +393,52 @@ func (g Generator) writeOutput() error {
 	return os.WriteFile(schemaOutputPath, []byte(g.OutputCache.String()), 0644)
 }
 
-func (g Generator) inferType(sql string) any {
-	tokens := strings.Fields(sql)
-	for _, k := range tokens {
-		key := strings.Trim(k, ";,()")
-		if datType, ok := g.Types[key]; ok {
-			return datType
+func (g *Generator) inferDataType(sql string) any {
+	upperSQL := strings.ToUpper(sql)
+	tokens := strings.Fields(upperSQL) // SQL Capitalize syntax
+	if len(tokens) == 0 {
+		return nil
+	}
+
+	var tableName string
+
+	switch tokens[0] {
+	case "SELECT":
+		tableName = g.findTableAfterKeyword(tokens, "FROM")
+	case "INSERT":
+		if len(tokens) >= 3 && tokens[1] == "INTO" {
+			tableName = strings.Trim(tokens[2], ";,()")
+		}
+	case "UPDATE":
+		if len(tokens) >= 2 {
+			tableName = strings.Trim(tokens[1], ";,()")
+		}
+	case "DELETE":
+		tableName = g.findTableAfterKeyword(tokens, "FROM")
+	}
+
+	if tableName != "" {
+		// Convert back to lowercase for lookup since table names are stored in lowercase
+		lowerTableName := strings.ToLower(tableName)
+
+		// Try lowercase match first
+		if dataType, exists := g.Types[lowerTableName]; exists {
+			return dataType
+		}
+		// Try with quotes (for quoted table names in schema)
+		if dataType, exists := g.Types[`"`+lowerTableName+`"`]; exists {
+			return dataType
 		}
 	}
+
 	return nil
+}
+
+func (g *Generator) findTableAfterKeyword(tokens []string, keyword string) string {
+	for i, token := range tokens {
+		if token == keyword && i+1 < len(tokens) {
+			return strings.Trim(tokens[i+1], ";,()")
+		}
+	}
+	return ""
 }

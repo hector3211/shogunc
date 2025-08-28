@@ -101,7 +101,38 @@
 
 ## Dependencies
 
-- Go 1.24.2 minimum
+- Go 1.25.0 minimum
 - External dependencies defined in `go.mod`
 - Use `go mod tidy` to manage dependencies
 
+## Agent Safety Rules
+
+### ⚠️ **CRITICAL: Code Modification Policy**
+
+**AGENTS CANNOT TOUCH CODE UNLESS EXPLICIT CONFIRMATION IS GIVEN**
+
+- **NEVER** modify, edit, or change any source code files without explicit user confirmation
+- **NEVER** use file editing tools to modify `.go`, `.sql`, `.yml`, `.md`, or any other code files
+- **ONLY** read/inspect files for analysis purposes
+- **ONLY** provide recommendations, suggestions, or plans for code changes
+- **ALWAYS** ask for permission before making any code modifications
+
+### 🔒 **Safety Guidelines**
+
+1. **Read-Only Analysis**: Use file reading tools only for understanding and analysis
+2. **Plan Before Action**: Provide detailed plans and get approval before any code changes
+3. **Explicit Confirmation**: Wait for clear user confirmation before touching any code
+4. **Documentation Updates**: Can update documentation files (like this AGENTS.md) with user approval
+5. **Test Files**: Can create/modify test files with user approval
+
+### 🚨 **Violation Consequences**
+
+Breaking this rule can cause:
+
+- Accidental code corruption
+- Loss of work
+- System instability
+- Security issues
+- Project integrity compromise
+
+**ALWAYS ASK BEFORE TOUCHING CODE!**

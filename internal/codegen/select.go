@@ -21,13 +21,13 @@ func NewSelectGenerator(types map[string]any, queryBlock *types.QueryBlock) *Sel
 	return &SelectGenerator{schemaTypes: types, queryblock: queryBlock}
 }
 
-func (g *SelectGenerator) GenerateSelectFunc(astStmt *types.SelectStatement, isMany bool) (*ast.FuncDecl, *ast.GenDecl, error) {
+func (g SelectGenerator) GenerateSelectFunc(astStmt *types.SelectStatement, isMany bool) (*ast.FuncDecl, *ast.GenDecl, error) {
 	paramStruct, paramTypeName, err := g.generateSelectParamStruct(astStmt)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	returnTypeExpr := g.generateReturnType(astStmt.TableName, isMany)
+	returnType := g.generateReturnType(astStmt.TableName, isMany)
 
 	params := []*ast.Field{
 		{
@@ -62,7 +62,7 @@ func (g *SelectGenerator) GenerateSelectFunc(astStmt *types.SelectStatement, isM
 			Params: &ast.FieldList{List: params},
 			Results: &ast.FieldList{
 				List: []*ast.Field{
-					{Type: returnTypeExpr},
+					{Type: returnType},
 					{Type: ast.NewIdent("error")},
 				},
 			},
@@ -73,7 +73,7 @@ func (g *SelectGenerator) GenerateSelectFunc(astStmt *types.SelectStatement, isM
 	return function, paramStruct, nil
 }
 
-func (g *SelectGenerator) generateFunctionBody(astStmt *types.SelectStatement, isMany bool, hasParams bool) ([]ast.Stmt, error) {
+func (g SelectGenerator) generateFunctionBody(astStmt *types.SelectStatement, isMany bool, hasParams bool) ([]ast.Stmt, error) {
 	var stmts []ast.Stmt
 
 	queryStmt := g.generateSelectQuery(astStmt)
@@ -97,7 +97,7 @@ func (g *SelectGenerator) generateFunctionBody(astStmt *types.SelectStatement, i
 	return stmts, nil
 }
 
-func (g *SelectGenerator) generateManyQueryStmts(astStmt *types.SelectStatement, hasParams bool) []ast.Stmt {
+func (g SelectGenerator) generateManyQueryStmts(astStmt *types.SelectStatement, hasParams bool) []ast.Stmt {
 	var stmts []ast.Stmt
 
 	// (ctx,query)...
@@ -196,15 +196,13 @@ func (g *SelectGenerator) generateManyQueryStmts(astStmt *types.SelectStatement,
 	return stmts
 }
 
-func (g *SelectGenerator) generateManyLoopBody(astStmt *types.SelectStatement) []ast.Stmt {
+func (g SelectGenerator) generateManyLoopBody(astStmt *types.SelectStatement) []ast.Stmt {
 	var stmts []ast.Stmt
 
 	// Declare loop variable: var item <Type>
 	singleType := g.generateReturnType(astStmt.TableName, true)
 	typeName := utils.TypeToString(singleType)
-	if strings.HasPrefix(typeName, "[]") {
-		typeName = strings.TrimPrefix(typeName, "[]")
-	}
+	typeName = strings.TrimPrefix(typeName, "[]")
 
 	// var item []typeName
 	itemDecl := &ast.GenDecl{
@@ -283,7 +281,7 @@ func (g *SelectGenerator) generateManyLoopBody(astStmt *types.SelectStatement) [
 	return stmts
 }
 
-func (g *SelectGenerator) generateReturnStmt() *ast.ReturnStmt {
+func (g SelectGenerator) generateReturnStmt() *ast.ReturnStmt {
 	return &ast.ReturnStmt{
 		Results: []ast.Expr{
 			ast.NewIdent("result"),
@@ -292,7 +290,7 @@ func (g *SelectGenerator) generateReturnStmt() *ast.ReturnStmt {
 	}
 }
 
-func (g *SelectGenerator) generateSelectParamStruct(astStmt *types.SelectStatement) (*ast.GenDecl, string, error) {
+func (g SelectGenerator) generateSelectParamStruct(astStmt *types.SelectStatement) (*ast.GenDecl, string, error) {
 	fieldMap, err := g.inferDataType(astStmt.TableName) // Extract data type and its column types
 	if err != nil {
 		return nil, "", err
@@ -366,7 +364,7 @@ func (g *SelectGenerator) generateSelectParamStruct(astStmt *types.SelectStateme
 	return paramStructDecl, typeName, nil
 }
 
-func (g *SelectGenerator) generateResultDecl(astStmt *types.SelectStatement, isMany bool) *ast.GenDecl {
+func (g SelectGenerator) generateResultDecl(astStmt *types.SelectStatement, isMany bool) *ast.GenDecl {
 	resultType := g.generateReturnType(astStmt.TableName, isMany)
 
 	var typeName string
@@ -393,7 +391,7 @@ func (g *SelectGenerator) generateResultDecl(astStmt *types.SelectStatement, isM
 	return resultVar
 }
 
-func (g *SelectGenerator) generateSelectQuery(astStmt *types.SelectStatement) ast.Stmt {
+func (g SelectGenerator) generateSelectQuery(astStmt *types.SelectStatement) ast.Stmt {
 	queryBuilder := shogun.NewSelectBuilder()
 	if len(astStmt.Columns) == 1 && astStmt.Columns[0] == "*" {
 		queryBuilder.Select("*")
@@ -419,22 +417,21 @@ func (g *SelectGenerator) generateSelectQuery(astStmt *types.SelectStatement) as
 	}
 
 	sql := queryBuilder.Build()
-	// Remove quotes if present since we'll add them with BasicLit
-	if len(sql) >= 2 && sql[0] == '"' && sql[len(sql)-1] == '"' {
-		sql = sql[1 : len(sql)-1]
-	}
+
+	// Clean up any quoted bind parameters that the shogun library might add
+	sql = utils.CleanBindParam(sql)
 
 	return &ast.AssignStmt{
 		Lhs: []ast.Expr{ast.NewIdent("query")},
 		Tok: token.DEFINE,
 		Rhs: []ast.Expr{&ast.BasicLit{
 			Kind:  token.STRING,
-			Value: fmt.Sprintf("\"%s\"", sql),
+			Value: fmt.Sprintf("`%s`", sql),
 		}},
 	}
 }
 
-func (g *SelectGenerator) generateSelectDbQuery(astStmt *types.SelectStatement) []ast.Stmt {
+func (g SelectGenerator) generateSelectDbQuery(astStmt *types.SelectStatement) []ast.Stmt {
 	var stmts []ast.Stmt
 
 	args := []ast.Expr{ast.NewIdent("ctx"), ast.NewIdent("query")}
@@ -493,7 +490,7 @@ func (g *SelectGenerator) generateSelectDbQuery(astStmt *types.SelectStatement) 
 	return stmts
 }
 
-func (g *SelectGenerator) generateZeroValue(tableName string, isMany bool) ast.Expr {
+func (g SelectGenerator) generateZeroValue(tableName string, isMany bool) ast.Expr {
 	if isMany {
 		return &ast.CompositeLit{
 			Type: &ast.ArrayType{
@@ -504,7 +501,7 @@ func (g *SelectGenerator) generateZeroValue(tableName string, isMany bool) ast.E
 	return ast.NewIdent("User{}") // This should be dynamic based on tableName
 }
 
-func (g *SelectGenerator) generateSelectParamArgs(astStmt *types.SelectStatement) []ast.Expr {
+func (g SelectGenerator) generateSelectParamArgs(astStmt *types.SelectStatement) []ast.Expr {
 	type paramInfo struct {
 		name string
 		typ  string
@@ -549,7 +546,7 @@ func (g *SelectGenerator) generateSelectParamArgs(astStmt *types.SelectStatement
 	return args
 }
 
-func (g *SelectGenerator) generateScanArgs(astStmt *types.SelectStatement) []ast.Expr {
+func (g SelectGenerator) generateScanArgs(astStmt *types.SelectStatement) []ast.Expr {
 	var scanArgs []ast.Expr
 	var columns []string
 
@@ -597,7 +594,7 @@ func (g *SelectGenerator) generateScanArgs(astStmt *types.SelectStatement) []ast
 	return scanArgs
 }
 
-func (g *SelectGenerator) generateReturnType(typeName string, isMany bool) ast.Expr {
+func (g SelectGenerator) generateReturnType(typeName string, isMany bool) ast.Expr {
 	// Generate struct name from table name
 	tableName := strings.TrimSuffix(typeName, "s") // Remove plural 's'
 	structName := utils.Capitalize(tableName)
@@ -610,7 +607,7 @@ func (g *SelectGenerator) generateReturnType(typeName string, isMany bool) ast.E
 	return ast.NewIdent(structName)
 }
 
-func (g *SelectGenerator) shoguncNextOp(nextOp types.LogicalOp) string {
+func (g SelectGenerator) shoguncNextOp(nextOp types.LogicalOp) string {
 	switch nextOp {
 	case types.And:
 		return shogun.And()
@@ -620,7 +617,7 @@ func (g *SelectGenerator) shoguncNextOp(nextOp types.LogicalOp) string {
 	return ""
 }
 
-func (g *SelectGenerator) shoguncConditionalOp(cond types.Condition) string {
+func (g SelectGenerator) shoguncConditionalOp(cond types.Condition) string {
 	// Use lowercase column name for consistency with database schema
 	columnName := strings.ToLower(cond.Column)
 
@@ -650,7 +647,7 @@ func (g *SelectGenerator) shoguncConditionalOp(cond types.Condition) string {
 	return ""
 }
 
-func (g *SelectGenerator) inferDataType(typeName string) (map[string]string, error) {
+func (g SelectGenerator) inferDataType(typeName string) (map[string]string, error) {
 	dataMap := make(map[string]string)
 
 	for k, v := range g.schemaTypes {

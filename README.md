@@ -100,10 +100,8 @@ shogunc/
 │   ├── codegen/           # Code generation logic
 │   ├── parser/            # SQL parsing functionality
 │   └── types/             # Type definitions
-├── queries/               # SQL query files
 ├── utils/                 # Shared utility functions
 ├── schema.sql             # Database schema
-├── shogunc.yml            # Configuration file
 ├── main.go                # Application entry point
 └── README.md
 ```

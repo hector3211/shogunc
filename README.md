@@ -20,7 +20,7 @@
 ### Build from source
 
 ```bash
-git clone https://github.com/yourusername/shogunc.git
+git clone https://github.com/hector3211/shogunc.git
 cd shogunc
 go build -o bin/shogunc main.go
 ```
@@ -136,4 +136,3 @@ go test ./...
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-

@@ -110,6 +110,20 @@ shogunc/
 
 ## Development
 
+### Development Mode
+
+For testing purposes, you can enable development mode to automatically generate test query files and configuration:
+
+```bash
+DEVELOPMENT=true go run main.go
+```
+
+This will automatically create:
+- `queries/` directory with sample SQL query files
+- `shogunc.yml` configuration file
+
+These files are automatically added to `.gitignore` and are intended only for development and testing.
+
 ### Available Commands
 
 - `task build` - Build the application

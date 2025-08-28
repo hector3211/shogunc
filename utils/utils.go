@@ -3,6 +3,8 @@ package utils
 import (
 	"fmt"
 	"go/ast"
+	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -85,4 +87,73 @@ func TypeToString(resultType ast.Expr) string {
 		}
 	}
 	return typeName
+}
+
+// GenerateTestFiles creates test queries and config files for development
+func GenerateTestFiles() error {
+	if err := generateTestQueries(); err != nil {
+		return fmt.Errorf("failed to generate test queries: %w", err)
+	}
+	if err := generateTestConfig(); err != nil {
+		return fmt.Errorf("failed to generate test config: %w", err)
+	}
+	return nil
+}
+
+func generateTestQueries() error {
+	queriesDir := "queries"
+	if err := os.MkdirAll(queriesDir, 0755); err != nil {
+		return err
+	}
+
+	userSQL := `-- name: GetUser :one
+SELECT id, first_name, last_name, email, phone, role, created_at
+FROM users
+WHERE id = $1;
+
+-- name: GetUserByClerkId :one
+SELECT id, clerk_id, first_name, last_name, email, phone, role, status, created_at
+FROM users
+WHERE first_name = $1
+LIMIT 1;
+
+-- name: GetUserByClerkIdTwo :one
+SELECT id, clerk_id, first_name, created_at
+FROM users
+WHERE clerk_id = $1 AND first_name = $2
+LIMIT 1 OFFSET 20;
+
+-- name: GetAllUsers :many
+SELECT id, first_name, last_name, email, role
+FROM users
+WHERE status = $1;
+`
+
+	return os.WriteFile(filepath.Join(queriesDir, "user.sql"), []byte(userSQL), 0644)
+}
+
+func generateTestConfig() error {
+	config := `sql:
+  schema: schema.sql
+  queries: queries
+  driver: sqlite3
+  output: /tmp/internal/db/generated
+#   gen:
+#     go:
+#       package: "authors"
+#       out: "postgresql"
+#   database:
+#     managed: true
+#   rules:
+#     - sqlc/db-prepare
+# - schema: "mysql/schema.sql"
+#   queries: "mysql/query.sql"
+#   engine: "mysql"
+#   gen:
+#     go:
+#       package: "authors"
+#       out: "mysql"
+`
+
+	return os.WriteFile("shogunc.yml", []byte(config), 0644)
 }

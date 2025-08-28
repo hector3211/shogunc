@@ -1,5 +1,7 @@
-todo.md
+ todo.md
 .env*
 /bin/
 /shogunc
 /generated/
+queries/
+shogunc.yml

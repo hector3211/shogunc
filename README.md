@@ -11,6 +11,25 @@
 - **Multiple query types**: Support for `:one`, `:many`, and other query result types
 - **Enum support**: Automatic generation of Go constants from SQL ENUM types
 
+## Current Status
+
+### ✅ Implemented
+
+- **Core Architecture**: Basic project structure with modular design
+- **SQL Parser**: Hand-rolled lexer and parser for SQL schema and query files
+- **Code Generation**: Basic Go code generation from parsed SQL structures
+- **Configuration System**: YAML-based configuration support (`shogunc.yml`)
+- **Development Mode**: Automatic generation of test files when `DEVELOPMENT=true`
+- **CLI Interface**: Command-line interface with input handling
+- **Type System**: Basic type mapping from SQL to Go types
+- **Utility Functions**: String manipulation and type conversion utilities
+
+### 📋 Planned
+
+- **Multiple Database Support**: PostgreSQL and other database drivers
+- **Advanced Query Types**: Support for `:exec`
+- **Documentation**: Comprehensive API documentation and usage examples
+
 ## Installation
 
 ### Prerequisites

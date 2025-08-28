@@ -39,45 +39,6 @@ sql:
   output: /internal/db/generated
 ```
 
-### Schema File
-
-Define your database schema in `schema.sql`:
-
-```sql
-CREATE TYPE "Role" AS ENUM (
-    'tenant',
-    'landlord',
-    'admin',
-    'staff'
-);
-
-CREATE TABLE IF NOT EXISTS "users" (
-    "id"          UUID PRIMARY KEY,
-    "clerk_id"    TEXT UNIQUE NOT NULL,
-    "first_name"  VARCHAR NOT NULL,
-    "last_name"   VARCHAR NOT NULL,
-    "email"       VARCHAR NOT NULL,
-    "role"        "Role" NOT NULL DEFAULT 'tenant',
-    "created_at"  TIMESTAMP DEFAULT now()
-);
-```
-
-### Query Files
-
-Create query files in the `queries` directory:
-
-```sql
--- name: GetUser :one
-SELECT id, first_name, last_name, email, role, created_at
-FROM users
-WHERE id = $1;
-
--- name: GetAllUsers :many
-SELECT id, first_name, last_name, email, role
-FROM users
-WHERE status = $1;
-```
-
 ### Generate Code
 
 ```bash

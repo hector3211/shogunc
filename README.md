@@ -36,7 +36,7 @@ sql:
   schema: schema.sql
   queries: queries
   driver: sqlite3
-  output: /tmp/internal/db/generated
+  output: /internal/db/generated
 ```
 
 ### Schema File
@@ -119,6 +119,7 @@ DEVELOPMENT=true go run main.go
 ```
 
 This will automatically create:
+
 - `queries/` directory with sample SQL query files
 - `shogunc.yml` configuration file
 

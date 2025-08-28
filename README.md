@@ -101,7 +101,6 @@ shogunc/
 │   ├── parser/            # SQL parsing functionality
 │   └── types/             # Type definitions
 ├── utils/                 # Shared utility functions
-├── schema.sql             # Database schema
 ├── main.go                # Application entry point
 └── README.md
 ```
@@ -110,7 +109,7 @@ shogunc/
 
 ### Development Mode
 
-For testing purposes, you can enable development mode to automatically generate test query files and configuration:
+For testing purposes, you can enable development mode to automatically generate test files:
 
 ```bash
 DEVELOPMENT=true go run main.go
@@ -118,6 +117,7 @@ DEVELOPMENT=true go run main.go
 
 This will automatically create:
 
+- `schema.sql` database schema file
 - `queries/` directory with sample SQL query files
 - `shogunc.yml` configuration file
 

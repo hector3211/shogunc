@@ -89,8 +89,107 @@ func TypeToString(resultType ast.Expr) string {
 	return typeName
 }
 
-// GenerateTestFiles creates test queries and config files for development
+func generateTestSchema() error {
+	schemaSQL := `CREATE TYPE "Complaint_Category" AS ENUM (
+    'maintenance',
+    'noise',
+    'security',
+    'parking',
+    'neighbor',
+    'trash',
+    'internet',
+    'lease',
+    'natural_disaster',
+    'other'
+);
+CREATE TYPE "Status" AS ENUM (
+    'open',
+    'in_progress',
+    'resolved',
+    'closed'
+);
+CREATE TYPE "Type" AS ENUM (
+    'lease_agreement',
+    'amendment',
+    'extension',
+    'termination',
+    'addendum'
+);
+CREATE TYPE "Lease_Status" AS ENUM (
+    'draft',
+    'pending_approval',
+    'active',
+    'expired',
+    'terminated',
+    'renewed'
+);
+CREATE TYPE "Compliance_Status" AS ENUM (
+    'pending_review',
+    'compliant',
+    'non_compliant',
+    'exempted'
+);
+CREATE TYPE "Work_Category" AS ENUM (
+    'plumbing',
+    'electric',
+    'carpentry',
+    'hvac',
+    'other'
+);
+
+CREATE TYPE "Role" AS ENUM (
+    'tenant',
+    'landlord',
+    'admin',
+    'staff'
+);
+
+CREATE TYPE "Account_Status" AS ENUM (
+    'active',
+    'inactive',
+    'suspended',
+    'pending'
+);
+
+CREATE TABLE IF NOT EXISTS "users" (
+    "id"          UUID PRIMARY KEY,
+    "clerk_id"    TEXT UNIQUE                    NOT NULL,
+    "first_name"  VARCHAR                        NOT NULL,
+    "last_name"   VARCHAR                        NOT NULL,
+    "email"       VARCHAR                        NOT NULL,
+    "phone"       VARCHAR                        NULL,
+    "unit_number" SMALLINT                       NULL,
+    "role"        "Role"                         NOT NULL DEFAULT "Role" 'tenant',
+    "status"      "Account_Status"               NOT NULL DEFAULT "Account_Status" 'active',
+    "last_login"  TIMESTAMP NOT NULL,
+    "updated_at"  TIMESTAMP          DEFAULT now(),
+    "created_at"  TIMESTAMP          DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS "parking_permits" (
+    "id"            UUID NOT NULL PRIMARY KEY,
+    "permit_number" BIGINT NOT NULL,
+    "created_by"    SMALLINT NOT NULL,
+    "updated_at"    TIMESTAMP DEFAULT now(),
+    "expires_at"    TIMESTAMP NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS "lockers" (
+    "id"          UUID PRIMARY KEY,
+    "access_code" VARCHAR,
+    "in_use"      BOOLEAN NOT NULL DEFAULT false,
+    "user_id"     BIGINT
+);
+`
+
+	return os.WriteFile("schema.sql", []byte(schemaSQL), 0644)
+}
+
+// GenerateTestFiles creates test queries, config, and schema files for development
 func GenerateTestFiles() error {
+	if err := generateTestSchema(); err != nil {
+		return fmt.Errorf("failed to generate test schema: %w", err)
+	}
 	if err := generateTestQueries(); err != nil {
 		return fmt.Errorf("failed to generate test queries: %w", err)
 	}

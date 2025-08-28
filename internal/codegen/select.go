@@ -87,8 +87,8 @@ func (g *SelectGenerator) generateFunctionBody(astStmt *types.SelectStatement, i
 		manyStmts := g.generateManyQueryStmts(astStmt, hasParams)
 		stmts = append(stmts, manyStmts...)
 	} else {
-		dbStmt := g.generateSelectDbQuery(astStmt, isMany)
-		stmts = append(stmts, dbStmt)
+		dbStmts := g.generateSelectDbQuery(astStmt)
+		stmts = append(stmts, dbStmts...)
 	}
 
 	returnStmt := g.generateReturnStmt()
@@ -118,7 +118,7 @@ func (g *SelectGenerator) generateManyQueryStmts(astStmt *types.SelectStatement,
 	// rows, err := q.db.query...
 	queryStmt := &ast.AssignStmt{
 		Lhs: []ast.Expr{ast.NewIdent("rows"), ast.NewIdent("err")},
-		Tok: token.ASSIGN,
+		Tok: token.DEFINE,
 		Rhs: []ast.Expr{queryCall},
 	}
 	stmts = append(stmts, queryStmt)
@@ -199,11 +199,11 @@ func (g *SelectGenerator) generateManyQueryStmts(astStmt *types.SelectStatement,
 func (g *SelectGenerator) generateManyLoopBody(astStmt *types.SelectStatement) []ast.Stmt {
 	var stmts []ast.Stmt
 
-	// Declare loop variable: var item <SingleType>
+	// Declare loop variable: var item <Type>
 	singleType := g.generateReturnType(astStmt.TableName, true)
-	var typeName string
-	if ident, ok := singleType.(*ast.Ident); ok {
-		typeName = ident.Name
+	typeName := utils.TypeToString(singleType)
+	if strings.HasPrefix(typeName, "[]") {
+		typeName = strings.TrimPrefix(typeName, "[]")
 	}
 
 	// var item []typeName
@@ -406,7 +406,6 @@ func (g *SelectGenerator) generateSelectQuery(astStmt *types.SelectStatement) as
 	for _, c := range astStmt.Conditions {
 		if c.ChainOp != types.Illegal {
 			conditions = append(conditions, g.shoguncNextOp(c.ChainOp))
-			continue
 		}
 		conditions = append(conditions, g.shoguncConditionalOp(c))
 	}
@@ -420,18 +419,24 @@ func (g *SelectGenerator) generateSelectQuery(astStmt *types.SelectStatement) as
 	}
 
 	sql := queryBuilder.Build()
+	// Remove quotes if present since we'll add them with BasicLit
+	if len(sql) >= 2 && sql[0] == '"' && sql[len(sql)-1] == '"' {
+		sql = sql[1 : len(sql)-1]
+	}
 
 	return &ast.AssignStmt{
 		Lhs: []ast.Expr{ast.NewIdent("query")},
 		Tok: token.DEFINE,
 		Rhs: []ast.Expr{&ast.BasicLit{
 			Kind:  token.STRING,
-			Value: sql,
+			Value: fmt.Sprintf("\"%s\"", sql),
 		}},
 	}
 }
 
-func (g *SelectGenerator) generateSelectDbQuery(astStmt *types.SelectStatement, isMany bool) *ast.AssignStmt {
+func (g *SelectGenerator) generateSelectDbQuery(astStmt *types.SelectStatement) []ast.Stmt {
+	var stmts []ast.Stmt
+
 	args := []ast.Expr{ast.NewIdent("ctx"), ast.NewIdent("query")}
 	args = append(args, g.generateSelectParamArgs(astStmt)...)
 
@@ -443,19 +448,60 @@ func (g *SelectGenerator) generateSelectDbQuery(astStmt *types.SelectStatement, 
 		Args: args,
 	}
 
-	// Add .Scan() call
+	// Create row variable: row, err := q.db.QueryRow(...)
+	rowDecl := &ast.AssignStmt{
+		Lhs: []ast.Expr{ast.NewIdent("row"), ast.NewIdent("err")},
+		Tok: token.DEFINE,
+		Rhs: []ast.Expr{queryRowCall},
+	}
+	stmts = append(stmts, rowDecl)
+
+	// Add error check
+	errCheck := &ast.IfStmt{
+		Cond: &ast.BinaryExpr{
+			X:  ast.NewIdent("err"),
+			Op: token.NEQ,
+			Y:  ast.NewIdent("nil"),
+		},
+		Body: &ast.BlockStmt{
+			List: []ast.Stmt{
+				&ast.ReturnStmt{
+					Results: []ast.Expr{
+						g.generateZeroValue(astStmt.TableName, false),
+						ast.NewIdent("err"),
+					},
+				},
+			},
+		},
+	}
+	stmts = append(stmts, errCheck)
+
+	// Add .Scan() call: err := row.Scan(...)
 	scanArgs := g.generateScanArgs(astStmt)
 	scanCall := &ast.CallExpr{
-		Fun:  &ast.SelectorExpr{X: queryRowCall, Sel: ast.NewIdent("Scan")},
+		Fun:  &ast.SelectorExpr{X: ast.NewIdent("row"), Sel: ast.NewIdent("Scan")},
 		Args: scanArgs,
 	}
 
-	// Return assignment: err := queryRowCall.Scan(...)
-	return &ast.AssignStmt{
+	scanStmt := &ast.AssignStmt{
 		Lhs: []ast.Expr{ast.NewIdent("err")},
 		Tok: token.ASSIGN,
 		Rhs: []ast.Expr{scanCall},
 	}
+	stmts = append(stmts, scanStmt)
+
+	return stmts
+}
+
+func (g *SelectGenerator) generateZeroValue(tableName string, isMany bool) ast.Expr {
+	if isMany {
+		return &ast.CompositeLit{
+			Type: &ast.ArrayType{
+				Elt: ast.NewIdent("User"), // This should be dynamic based on tableName
+			},
+		}
+	}
+	return ast.NewIdent("User{}") // This should be dynamic based on tableName
 }
 
 func (g *SelectGenerator) generateSelectParamArgs(astStmt *types.SelectStatement) []ast.Expr {
@@ -472,7 +518,7 @@ func (g *SelectGenerator) generateSelectParamArgs(astStmt *types.SelectStatement
 			columnNameToLower := strings.ToLower(condition.Value.Column)
 			fieldMap, _ := g.inferDataType(astStmt.TableName)
 			goType := fieldMap[columnNameToLower]
-			paramName := utils.ToPascalCase(condition.Value.Column)
+			paramName := utils.ToProperPascalCase(condition.Value.Column)
 
 			paramList = append(paramList, paramInfo{
 				name: paramName,
@@ -535,7 +581,7 @@ func (g *SelectGenerator) generateScanArgs(astStmt *types.SelectStatement) []ast
 
 	// Generate &result.FieldName expressions for each column
 	for _, column := range columns {
-		fieldName := utils.ToPascalCase(column)
+		fieldName := utils.ToProperPascalCase(column)
 
 		scanArg := &ast.UnaryExpr{
 			Op: token.AND,
@@ -579,8 +625,7 @@ func (g *SelectGenerator) shoguncConditionalOp(cond types.Condition) string {
 	columnName := strings.ToLower(cond.Column)
 
 	if cond.Value.Position != 0 {
-		fieldName := utils.ToPascalCase(cond.Value.Column)
-		return fmt.Sprintf("%s = params.%s", columnName, fieldName)
+		return fmt.Sprintf("%s = $%d", columnName, cond.Value.Position)
 	} else if cond.Value.Value != nil {
 		// For literal values, use shogun functions
 		switch cond.Operator {

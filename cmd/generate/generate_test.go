@@ -51,12 +51,12 @@ SELECT * FROM users WHERE id = $1;`
 
 	// Write config file
 	config := `
-sql:
-  schema: schema.sql
-  queries: queries
-  driver: sqlite3
-  output: output.sql.go
-`
+ sql:
+   schema: schema.sql
+   queries: queries
+   driver: sqlite3
+   output: output
+ `
 	if err := os.WriteFile(filepath.Join(tmp, "shogunc.yml"), []byte(config), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -81,21 +81,40 @@ sql:
 	if gen.Config.Sql.Schema != "schema.sql" {
 		t.Errorf("Expected schema path 'schema.sql', got '%s'", gen.Config.Sql.Schema)
 	}
-	if gen.Config.Sql.Output != "output.sql.go" {
-		t.Errorf("Expected output path 'output.sql.go', got '%s'", gen.Config.Sql.Output)
+	if gen.Config.Sql.Output != "output" {
+		t.Errorf("Expected output path 'output', got '%s'", gen.Config.Sql.Output)
 	}
 
-	out, err := os.ReadFile(gen.Config.Sql.Output)
+	// Check that output directory exists
+	if _, err := os.Stat(gen.Config.Sql.Output); os.IsNotExist(err) {
+		t.Fatalf("Expected output directory to exist, got error: %v", err)
+	}
+
+	// Check that schema.sql.go exists and contains expected content
+	schemaFile := filepath.Join(gen.Config.Sql.Output, "schema.sql.go")
+	out, err := os.ReadFile(schemaFile)
 	if err != nil {
-		t.Fatalf("Expected output file to exist, got error: %v", err)
+		t.Fatalf("Expected schema.sql.go file to exist, got error: %v", err)
 	}
 
+	fmt.Println("schema.sql.go content:")
 	fmt.Println(string(out))
 
 	if !strings.Contains(string(out), "type User") {
-		t.Errorf("Expected generated output to contain 'type Users'\nOutput: %s", string(out))
+		t.Errorf("Expected generated schema output to contain 'type User'\nOutput: %s", string(out))
 	}
-	if !strings.Contains(string(out), "func GetUser") {
-		t.Errorf("Expected generated output to contain 'func GetUser'\nOutput: %s", string(out))
+
+	// Check that user.sql.go exists and contains expected content
+	userFile := filepath.Join(gen.Config.Sql.Output, "user.sql.go")
+	userOut, err := os.ReadFile(userFile)
+	if err != nil {
+		t.Fatalf("Expected user.sql.go file to exist, got error: %v", err)
+	}
+
+	fmt.Println("user.sql.go content:")
+	fmt.Println(string(userOut))
+
+	if !strings.Contains(string(userOut), "func GetUser") {
+		t.Errorf("Expected generated user output to contain 'func GetUser'\nOutput: %s", string(userOut))
 	}
 }

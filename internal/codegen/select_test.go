@@ -235,7 +235,7 @@ func TestShoguncConditionalOp_BindParam(t *testing.T) {
 	}
 
 	result := generator.shoguncConditionalOp(condition)
-	expected := "id = params.Id"
+	expected := "id = $1"
 	if result != expected {
 		t.Errorf("Expected '%s', got '%s'", expected, result)
 	}

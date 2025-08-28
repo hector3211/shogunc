@@ -7,25 +7,23 @@ import (
 	"strings"
 )
 
-func GenerateGoDb(outputPath string, driver string, packageName string) (string, error) {
+func GenerateGoDb(outputPath string, driver string) (string, error) {
 	switch strings.ToLower(driver) {
 	case "postgres":
-		return generateGoDbPostgres(outputPath, packageName)
+		return generateGoDbPostgres(outputPath)
 	case "sqlite", "sqlite3":
-		return generateGoDbSQLite(outputPath, packageName)
+		return generateGoDbSQLite(outputPath)
 	default:
-		return generateGoDbGeneric(outputPath, packageName)
+		return generateGoDbGeneric(outputPath)
 	}
 }
 
-func generateGoDbGeneric(outputPath string, packageName string) (string, error) {
-	var pkgName string
+func generateGoDbGeneric(outputPath string) (string, error) {
+	pkgName := "db"
 	var dbFilePath string
 	if outputPath != "" {
 		dbFilePath = outputPath
-		pkgName = packageName
 	} else {
-		pkgName = "db"
 		dbFilePath = "/tmp/internal/generated/db.go"
 	}
 	var buffer strings.Builder
@@ -64,12 +62,11 @@ func generateGoDbGeneric(outputPath string, packageName string) (string, error) 
 	return generatedCode, nil
 }
 
-func generateGoDbSQLite(outputPath string, packageName string) (string, error) {
-	var pkgName string
+func generateGoDbSQLite(outputPath string) (string, error) {
+	pkgName := "db"
 	var dbFilePath string
 	if outputPath != "" {
 		dbFilePath = outputPath
-		pkgName = packageName
 	} else {
 		pkgName = "db"
 		dbFilePath = "/tmp/internal/generated/db.go"
@@ -112,14 +109,12 @@ func generateGoDbSQLite(outputPath string, packageName string) (string, error) {
 	return generatedCode, nil
 }
 
-func generateGoDbPostgres(outputPath string, packageName string) (string, error) {
-	var pkgName string
+func generateGoDbPostgres(outputPath string) (string, error) {
+	pkgName := "db"
 	var dbFilePath string
 	if outputPath != "" {
 		dbFilePath = outputPath
-		pkgName = packageName
 	} else {
-		pkgName = "db"
 		dbFilePath = "/tmp/internal/generated/db.go"
 	}
 	var buffer strings.Builder

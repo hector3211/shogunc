@@ -1,9 +1,8 @@
- sql:
-   schema: schema.sql
-   queries: queries
-   driver: sqlite3
-   output: /tmp/db/generated
-   package: "db"
+sql:
+  schema: schema.sql
+  queries: queries
+  driver: sqlite3
+  output: /tmp/internal/db/generated
 #   gen:
 #     go:
 #       package: "authors"

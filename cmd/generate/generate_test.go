@@ -50,13 +50,13 @@ SELECT * FROM users WHERE id = $1;`
 	}
 
 	// Write config file
-	config := `
- sql:
-   schema: schema.sql
-   queries: queries
-   driver: sqlite3
-   output: output
- `
+	config := fmt.Sprintf(`
+  sql:
+    schema: schema.sql
+    queries: queries
+    driver: sqlite3
+    output: %s/output
+  `, tmp)
 	if err := os.WriteFile(filepath.Join(tmp, "shogunc.yml"), []byte(config), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -72,6 +72,7 @@ SELECT * FROM users WHERE id = $1;`
 	}
 
 	// Asserts
+	expectedOutput := filepath.Join(tmp, "output")
 	if gen.Config.Sql.Driver != SQLITE {
 		t.Errorf("Expected driver 'sqlite3', got '%s'", gen.Config.Sql.Driver)
 	}
@@ -81,17 +82,17 @@ SELECT * FROM users WHERE id = $1;`
 	if gen.Config.Sql.Schema != "schema.sql" {
 		t.Errorf("Expected schema path 'schema.sql', got '%s'", gen.Config.Sql.Schema)
 	}
-	if gen.Config.Sql.Output != "output" {
-		t.Errorf("Expected output path 'output', got '%s'", gen.Config.Sql.Output)
+	if gen.Config.Sql.Output != expectedOutput {
+		t.Errorf("Expected output path '%s', got '%s'", expectedOutput, gen.Config.Sql.Output)
 	}
 
 	// Check that output directory exists
-	if _, err := os.Stat(gen.Config.Sql.Output); os.IsNotExist(err) {
+	if _, err := os.Stat(expectedOutput); os.IsNotExist(err) {
 		t.Fatalf("Expected output directory to exist, got error: %v", err)
 	}
 
 	// Check that schema.sql.go exists and contains expected content
-	schemaFile := filepath.Join(gen.Config.Sql.Output, "schema.sql.go")
+	schemaFile := filepath.Join(expectedOutput, "schema.sql.go")
 	out, err := os.ReadFile(schemaFile)
 	if err != nil {
 		t.Fatalf("Expected schema.sql.go file to exist, got error: %v", err)
@@ -105,7 +106,7 @@ SELECT * FROM users WHERE id = $1;`
 	}
 
 	// Check that user.sql.go exists and contains expected content
-	userFile := filepath.Join(gen.Config.Sql.Output, "user.sql.go")
+	userFile := filepath.Join(expectedOutput, "user.sql.go")
 	userOut, err := os.ReadFile(userFile)
 	if err != nil {
 		t.Fatalf("Expected user.sql.go file to exist, got error: %v", err)

@@ -46,18 +46,6 @@ go build -o bin/shogunc main.go
 
 ## Usage
 
-### Configuration
-
-Create a `shogunc.yml` configuration file in your project root:
-
-```yaml
-sql:
-  schema: schema.sql
-  queries: queries
-  driver: sqlite3
-  output: /internal/db/generated
-```
-
 ### Generate Code
 
 ```bash
@@ -89,11 +77,44 @@ shogunc/
 
 ### Development Mode
 
-For testing purposes, you can enable development mode to automatically generate test files:
+For development and testing, you can enable development mode to automatically generate and work with files in a dedicated `./tmp/` directory:
 
 ```bash
 DEVELOPMENT=true go run main.go
 ```
+
+#### Development Mode Features
+
+When `DEVELOPMENT=true`, shogunc automatically:
+
+- Creates a `./tmp/` directory in your project root
+- Generates test schema, queries, and configuration files in `./tmp/`
+- Processes all files within the `./tmp/` environment
+- Outputs generated code to `./tmp/internal/db/generated/`
+
+#### Development Directory Structure
+
+```
+./tmp/
+├── schema.sql              # Generated database schema
+├── shogunc.yml            # Generated configuration file
+├── queries/               # Query files directory
+│   ├── user.sql
+│   ├── parking.sql
+│   └── locker.sql
+└── internal/db/generated/  # Generated Go code
+    ├── db.go
+    ├── schema.sql.go
+    ├── user.sql.go
+    └── ...
+```
+
+#### Development vs Production
+
+- **Development Mode** (`DEVELOPMENT=true`): Uses `./tmp/` directory
+- **Production Mode** (default): Uses files in project root
+
+This provides a clean separation between development testing and production code generation.
 
 This will automatically create:
 

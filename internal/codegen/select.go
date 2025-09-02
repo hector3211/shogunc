@@ -87,7 +87,7 @@ func (g SelectGenerator) generateFunctionBody(astStmt *types.SelectStatement, is
 		manyStmts := g.generateManyQueryStmts(astStmt, hasParams)
 		stmts = append(stmts, manyStmts...)
 	} else {
-		dbStmts := g.generateSelectDbQuery(astStmt)
+		dbStmts := g.generateSelectDbQuery(astStmt, hasParams)
 		stmts = append(stmts, dbStmts...)
 	}
 
@@ -100,13 +100,13 @@ func (g SelectGenerator) generateFunctionBody(astStmt *types.SelectStatement, is
 func (g SelectGenerator) generateManyQueryStmts(astStmt *types.SelectStatement, hasParams bool) []ast.Stmt {
 	var stmts []ast.Stmt
 
-	// (ctx,query)...
+	// Generate arguments: (ctx, query, params...)
 	args := []ast.Expr{ast.NewIdent("ctx"), ast.NewIdent("query")}
 	if hasParams {
 		args = append(args, g.generateSelectParamArgs(astStmt)...)
 	}
 
-	// q.db.query...
+	// Use Query for :many queries
 	queryCall := &ast.CallExpr{
 		Fun: &ast.SelectorExpr{
 			X:   &ast.SelectorExpr{X: ast.NewIdent("q"), Sel: ast.NewIdent("db")},
@@ -115,7 +115,7 @@ func (g SelectGenerator) generateManyQueryStmts(astStmt *types.SelectStatement, 
 		Args: args,
 	}
 
-	// rows, err := q.db.query...
+	// rows, err := q.db.Query(...)
 	queryStmt := &ast.AssignStmt{
 		Lhs: []ast.Expr{ast.NewIdent("rows"), ast.NewIdent("err")},
 		Tok: token.DEFINE,
@@ -123,7 +123,7 @@ func (g SelectGenerator) generateManyQueryStmts(astStmt *types.SelectStatement, 
 	}
 	stmts = append(stmts, queryStmt)
 
-	// if err != nil...
+	// if err != nil { return nil, err }
 	errCheckStmt := &ast.IfStmt{
 		Cond: &ast.BinaryExpr{
 			X:  ast.NewIdent("err"),
@@ -140,7 +140,7 @@ func (g SelectGenerator) generateManyQueryStmts(astStmt *types.SelectStatement, 
 	}
 	stmts = append(stmts, errCheckStmt)
 
-	// defer rows.Close()...
+	// defer rows.Close()
 	deferStmt := &ast.DeferStmt{
 		Call: &ast.CallExpr{
 			Fun: &ast.SelectorExpr{
@@ -151,7 +151,7 @@ func (g SelectGenerator) generateManyQueryStmts(astStmt *types.SelectStatement, 
 	}
 	stmts = append(stmts, deferStmt)
 
-	// rows.Next() loop...
+	// Generate the loop body
 	loopBody := g.generateManyLoopBody(astStmt)
 	forStmt := &ast.ForStmt{
 		Cond: &ast.CallExpr{
@@ -164,7 +164,7 @@ func (g SelectGenerator) generateManyQueryStmts(astStmt *types.SelectStatement, 
 	}
 	stmts = append(stmts, forStmt)
 
-	//  if err := rows.Err(); err != nil...
+	// if err := rows.Err(); err != nil { return nil, err }
 	finalErrCheck := &ast.IfStmt{
 		Init: &ast.AssignStmt{
 			Lhs: []ast.Expr{ast.NewIdent("err")},
@@ -431,7 +431,7 @@ func (g SelectGenerator) generateSelectQuery(astStmt *types.SelectStatement) ast
 	}
 }
 
-func (g SelectGenerator) generateSelectDbQuery(astStmt *types.SelectStatement) []ast.Stmt {
+func (g SelectGenerator) generateSelectDbQuery(astStmt *types.SelectStatement, hasParams bool) []ast.Stmt {
 	var stmts []ast.Stmt
 
 	args := []ast.Expr{ast.NewIdent("ctx"), ast.NewIdent("query")}

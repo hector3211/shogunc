@@ -98,8 +98,12 @@ func (a *Ast) parseTableField(idx int) (*Field, error) {
 	field.Name = a.currentToken.Literal
 	a.NextToken()
 
-	if a.currentToken.Type == IDENT && IsDatabaseType(a.currentToken.Literal) {
-		// TODO add datatype validation
+	if IsDatabaseTypeToken(a.currentToken.Type) {
+		// Built-in database type tokens (BIGINT, TEXT, etc.)
+		field.DataType = a.currentToken
+		a.NextToken()
+	} else if a.currentToken.Type == IDENT && IsDatabaseType(a.currentToken.Literal) {
+		// Custom database types as identifiers
 		field.DataType = a.currentToken
 		a.NextToken()
 	} else if a.currentToken.Type == STRING {
@@ -107,7 +111,7 @@ func (a *Ast) parseTableField(idx int) (*Field, error) {
 		field.DataType = Token{Type: ENUM, Literal: a.currentToken.Literal}
 		a.NextToken()
 	} else {
-		return nil, fmt.Errorf("[PARSER_TABLE] expected datatype (IDENT or STRING), got: %s field_idx: %d", a.currentToken.Literal, idx)
+		return nil, fmt.Errorf("[PARSER_TABLE] expected datatype, got: %s field_idx: %d", a.currentToken.Literal, idx)
 	}
 
 	for a.currentToken.Type != COMMA && a.currentToken.Type != RPAREN && a.currentToken.Type != EOF {
@@ -141,6 +145,14 @@ func (a *Ast) parseTableField(idx int) (*Field, error) {
 				a.NextToken() // Consume now
 				a.NextToken() // Consume (
 				a.NextToken() // Consume )
+				continue
+			}
+
+			// Handle CURRENT_TIMESTAMP for TIMESTAMP fields
+			if IsNowCompatible(field.DataType) && a.currentToken.Type == IDENT && strings.ToUpper(a.currentToken.Literal) == "CURRENT_TIMESTAMP" {
+				val := SqlNow(field.DataType)
+				field.Default = &val
+				a.NextToken()
 				continue
 			}
 

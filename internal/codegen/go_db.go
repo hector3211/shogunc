@@ -72,7 +72,6 @@ func generateGoDbSQLite(outputPath string) (string, error) {
 		dbFilePath = "/tmp/internal/generated/db.go"
 	}
 	var buffer strings.Builder
-	buffer.WriteString("//go:build ignore\n\n")
 	buffer.WriteString(fmt.Sprintf("package %s\n\n", pkgName))
 
 	buffer.WriteString(`import (

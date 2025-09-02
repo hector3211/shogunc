@@ -111,6 +111,7 @@ func TypeToString(resultType ast.Expr) string {
 }
 
 func generateTestSchema() error {
+	// Use the exact schema from the working test
 	schemaSQL := `CREATE TYPE "Complaint_Category" AS ENUM (
     'maintenance',
     'noise',
@@ -158,33 +159,18 @@ CREATE TYPE "Work_Category" AS ENUM (
     'other'
 );
 
-CREATE TYPE "Role" AS ENUM (
-    'tenant',
-    'landlord',
-    'admin',
-    'staff'
-);
-
-CREATE TYPE "Account_Status" AS ENUM (
-    'active',
-    'inactive',
-    'suspended',
-    'pending'
-);
 
 CREATE TABLE IF NOT EXISTS "users" (
     "id"          UUID PRIMARY KEY,
-    "clerk_id"    TEXT UNIQUE                    NOT NULL,
-    "first_name"  VARCHAR                        NOT NULL,
-    "last_name"   VARCHAR                        NOT NULL,
-    "email"       VARCHAR                        NOT NULL,
-    "phone"       VARCHAR                        NULL,
-    "unit_number" SMALLINT                       NULL,
-    "role"        "Role"                         NOT NULL DEFAULT "Role" 'tenant',
-    "status"      "Account_Status"               NOT NULL DEFAULT "Account_Status" 'active',
-    "last_login"  TIMESTAMP NOT NULL,
-    "updated_at"  TIMESTAMP          DEFAULT now(),
-    "created_at"  TIMESTAMP          DEFAULT now()
+    "clerk_id"    TEXT UNIQUE NOT NULL,
+    "first_name"  VARCHAR NOT NULL,
+    "last_name"   VARCHAR NOT NULL,
+    "email"       VARCHAR NOT NULL,
+    "phone"       VARCHAR NULL,
+    "unit_number" INT NULL,
+    "role"        TEXT NOT NULL DEFAULT 'user',
+    "status"      TEXT NOT NULL DEFAULT 'active',
+    "created_at"  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS "parking_permits" (
@@ -200,16 +186,32 @@ CREATE TABLE IF NOT EXISTS "lockers" (
     "access_code" VARCHAR,
     "in_use"      BOOLEAN NOT NULL DEFAULT false,
     "user_id"     BIGINT
-);
-`
+);`
 
-	return os.WriteFile("schema.sql", []byte(schemaSQL), 0644)
+	// Use ./tmp directory in development mode
+	schemaPath := "schema.sql"
+	if os.Getenv("DEVELOPMENT") == "true" {
+		if err := os.MkdirAll("tmp", 0755); err != nil {
+			return fmt.Errorf("failed to create tmp directory: %w", err)
+		}
+		schemaPath = "tmp/schema.sql"
+	}
+
+	return os.WriteFile(schemaPath, []byte(schemaSQL), 0644)
 }
 
 func generateTestQueries() error {
+	// Use ./tmp/queries directory in development mode
 	queriesDir := "queries"
-	if err := os.MkdirAll(queriesDir, 0755); err != nil {
-		return err
+	if os.Getenv("DEVELOPMENT") == "true" {
+		queriesDir = "tmp/queries"
+		if err := os.MkdirAll(queriesDir, 0755); err != nil {
+			return err
+		}
+	} else {
+		if err := os.MkdirAll(queriesDir, 0755); err != nil {
+			return err
+		}
 	}
 
 	userSQL := `-- name: GetUser :one
@@ -280,14 +282,34 @@ RETURNING id, access_code, in_use, user_id;
 }
 
 func generateTestConfig() error {
-	config := `sql:
+	// Use relative paths in development mode (everything runs from tmp/)
+	var config string
+	if os.Getenv("DEVELOPMENT") == "true" {
+		config = `sql:
   schema: schema.sql
   queries: queries
   driver: sqlite3
-  output: /tmp/internal/db/generated
+  output: internal/db/generated
 `
+	} else {
+		config = `sql:
+  schema: schema.sql
+  queries: queries
+  driver: sqlite3
+  output: internal/db/generated
+`
+	}
 
-	return os.WriteFile("shogunc.yml", []byte(config), 0644)
+	// Use ./tmp directory for config file in development mode
+	configPath := "shogunc.yml"
+	if os.Getenv("DEVELOPMENT") == "true" {
+		if err := os.MkdirAll("tmp", 0755); err != nil {
+			return fmt.Errorf("failed to create tmp directory: %w", err)
+		}
+		configPath = "tmp/shogunc.yml"
+	}
+
+	return os.WriteFile(configPath, []byte(config), 0644)
 }
 
 func GenerateTestFiles() error {

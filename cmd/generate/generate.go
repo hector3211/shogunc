@@ -64,7 +64,7 @@ func NewGenerator() *Generator {
 				Schema:  "",
 				Driver:  "",
 				// Output:  fmt.Sprintf("%s/generated.sql.go",cwd),
-				Output: "../../tmp/internal/generated",
+				Output: "tmp/internal/generated",
 				// Todo: turn to empty string
 			},
 		},
@@ -76,11 +76,22 @@ func NewGenerator() *Generator {
 }
 
 func (g *Generator) Execute(cwd string) error {
-	if !g.hasConfig(cwd) {
+	// In development mode, try to change to ./tmp/ directory
+	if os.Getenv("DEVELOPMENT") == "true" {
+		tmpDir := filepath.Join(cwd, "tmp")
+		if _, err := os.Stat(tmpDir); err == nil {
+			if err := os.Chdir(tmpDir); err != nil {
+				return fmt.Errorf("failed to change to tmp directory: %w", err)
+			}
+			cwd = tmpDir
+		}
+	}
+
+	if !g.hasConfig() {
 		return fmt.Errorf("no shogunc.yml exists CWD: %s", cwd)
 	}
 
-	if err := g.loadConfig(cwd); err != nil {
+	if err := g.loadConfig(); err != nil {
 		return err
 	}
 
@@ -101,17 +112,16 @@ func (g *Generator) Execute(cwd string) error {
 	return err
 }
 
-func (g Generator) hasConfig(cwd string) bool {
-	_, err := os.ReadFile(filepath.Join(cwd, "shogunc.yml"))
+func (g Generator) hasConfig() bool {
+	configPath := "shogunc.yml"
+	_, err := os.ReadFile(configPath)
 	return err == nil
 }
 
-func (g *Generator) loadConfig(cwd string) error {
-	path := filepath.Join(cwd, "shogunc.yml")
-
-	configFile, err := os.ReadFile(path)
+func (g *Generator) loadConfig() error {
+	configFile, err := os.ReadFile("shogunc.yml")
 	if err != nil {
-		return fmt.Errorf("[GENERATE] failed to read config file at %s: %w", path, err)
+		return fmt.Errorf("[GENERATE] failed to read config file: %w", err)
 	}
 
 	var config ShogunConfig
@@ -240,6 +250,10 @@ func (g *Generator) LoadSqlFiles() error {
 		if !strings.HasSuffix(entry.Name(), ".sql") {
 			continue
 		}
+		// Skip schema.sql as it's not a query file
+		if entry.Name() == "schema.sql" {
+			continue
+		}
 
 		fullPath := filepath.Join(directory, entry.Name())
 		file, err := os.Open(fullPath)
@@ -321,6 +335,7 @@ func (g *Generator) parseSqlFile(file *os.File, fileName string) error {
 	// For SQL query files, include necessary imports
 	fullContent.WriteString("import (\n")
 	fullContent.WriteString(fmt.Sprintf("\t%q\n", "context"))
+	fullContent.WriteString(fmt.Sprintf("\t%q\n", "time"))
 	fullContent.WriteString(")\n\n")
 
 	fullContent.WriteString(genContent.String())

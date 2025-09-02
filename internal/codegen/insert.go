@@ -167,8 +167,11 @@ func (g InsertGenerator) generateFunctionBody(astStmt *types.InsertStatement, ha
 	queryStmt := g.generateInsertQuery(astStmt)
 	stmts = append(stmts, queryStmt)
 
-	resultDecl := g.generateResultDecl(astStmt)
-	stmts = append(stmts, resultDecl)
+	// Only generate result declaration if there are returning fields
+	if len(astStmt.ReturningFields) > 0 {
+		resultDecl := g.generateResultDecl(astStmt)
+		stmts = append(stmts, resultDecl)
+	}
 
 	dbStmts := g.generateInsertDbQuery(astStmt)
 	stmts = append(stmts, dbStmts...)
@@ -262,13 +265,30 @@ func (g InsertGenerator) generateInsertDbQuery(astStmt *types.InsertStatement) [
 			Args: args,
 		}
 
-		// Create row variable: row := q.db.QueryRow(ctx,query,params...)
+		// Create row variable: row, err := q.db.QueryRow(ctx,query,params...)
 		rowDecl := &ast.AssignStmt{
-			Lhs: []ast.Expr{ast.NewIdent("row")},
+			Lhs: []ast.Expr{ast.NewIdent("row"), ast.NewIdent("err")},
 			Tok: token.DEFINE,
 			Rhs: []ast.Expr{queryRowCall},
 		}
 		stmts = append(stmts, rowDecl)
+
+		// Add error check: if err != nil { return nil, err }
+		errCheck := &ast.IfStmt{
+			Cond: &ast.BinaryExpr{
+				X:  ast.NewIdent("err"),
+				Op: token.NEQ,
+				Y:  ast.NewIdent("nil"),
+			},
+			Body: &ast.BlockStmt{
+				List: []ast.Stmt{
+					&ast.ReturnStmt{
+						Results: []ast.Expr{ast.NewIdent("nil"), ast.NewIdent("err")},
+					},
+				},
+			},
+		}
+		stmts = append(stmts, errCheck)
 
 		//  row.Scan(...)
 		scanArgs := g.generateScanArgs(astStmt)
@@ -295,9 +315,9 @@ func (g InsertGenerator) generateInsertDbQuery(astStmt *types.InsertStatement) [
 			Args: args,
 		}
 
-		// _, err := q.db.Exec(ctx,query,params...)
+		// err := q.db.Exec(ctx,query,params...)
 		execStmt := &ast.AssignStmt{
-			Lhs: []ast.Expr{ast.NewIdent("_"), ast.NewIdent("err")},
+			Lhs: []ast.Expr{ast.NewIdent("err")},
 			Tok: token.DEFINE,
 			Rhs: []ast.Expr{execCall},
 		}

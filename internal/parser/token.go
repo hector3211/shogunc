@@ -22,7 +22,7 @@ const (
 	BIGINT    TokenType = "BIGINT"
 	SMALLINT  TokenType = "SMALLINT"
 	DECIMAL   TokenType = "DECIMAL"
-	VARCHAR   TokenType = "VARCAHR"
+	VARCHAR   TokenType = "VARCHAR"
 	TEXT      TokenType = "TEXT"
 	BOOLEAN   TokenType = "BOOLEAN"
 	TIMESTAMP TokenType = "TIMESTAMP"
@@ -168,6 +168,16 @@ var keyWords = map[string]TokenType{
 	"END":       END,
 	"RETURNING": RETURNING,
 	"DEFAULT":   DEFAULT,
+	"BIGINT":    BIGINT,
+	"INT":       INT,
+	"SMALLINT":  SMALLINT,
+	"TEXT":      TEXT,
+	"VARCHAR":   VARCHAR,
+	"BOOLEAN":   BOOLEAN,
+	"TIMESTAMP": TIMESTAMP,
+	"DATE":      DATE,
+	"DECIMAL":   DECIMAL,
+	"UUID":      UUID,
 }
 
 func LookupIdent(ident string) TokenType {
@@ -222,6 +232,15 @@ func IsDatabaseType(t string) bool {
 		return true
 	}
 	return false
+}
+
+func IsDatabaseTypeToken(tokType TokenType) bool {
+	switch tokType {
+	case BIGINT, INT, SMALLINT, TEXT, VARCHAR, BOOLEAN, TIMESTAMP, DATE, DECIMAL, UUID:
+		return true
+	default:
+		return false
+	}
 }
 
 func IsNowCompatible(tok Token) bool {
